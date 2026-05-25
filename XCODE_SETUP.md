@@ -1,7 +1,7 @@
 # Building the Swift Version in Xcode
 
 This walks you through creating a native macOS menubar app from the four Swift
-source files in `HebrewDateMenubar/`. No prior Xcode experience assumed.
+source files in `Hebcal4Menubar/`. No prior Xcode experience assumed.
 
 The app has no window and no Dock icon — it lives entirely in the menubar. That
 "agent" behavior comes from one Info.plist key (`LSUIElement`), explained below.
@@ -15,7 +15,7 @@ The app has no window and no Dock icon — it lives entirely in the menubar. Tha
 1. Open **Xcode** → **File → New → Project…**
 2. Choose **macOS → App**, click **Next**.
 3. Fill in:
-   - **Product Name:** `HebrewDateMenubar`
+   - **Product Name:** `Hebcal4Menubar`
    - **Interface:** **AppKit** (⚠️ not SwiftUI — this app is AppKit-based)
    - **Language:** **Swift**
    - Uncheck **Use Core Data** and **Include Tests** (not needed).
@@ -39,7 +39,7 @@ A menubar app has no window, so delete the GUI scaffolding Xcode made:
 ### 3. Add the source files
 
 1. Delete Xcode's generated `AppDelegate.swift` (we have our own).
-2. **File → Add Files to "HebrewDateMenubar"…**, then add all four:
+2. **File → Add Files to "Hebcal4Menubar"…**, then add all four:
    - `main.swift`
    - `AppDelegate.swift`
    - `HebcalClient.swift`
@@ -92,21 +92,21 @@ style** and **Sunset mode** submenus, refresh, and Hebcal attribution.
 
 If you just want a running `.app` without clicking through Xcode, you need the
 Xcode command-line tools (`xcode-select --install`). Then from inside the
-`HebrewDateMenubar/` folder:
+`Hebcal4Menubar/` folder:
 
 ```bash
 # Compile the three sources into one binary
 swiftc -O \
-  HebrewDateMenubar/main.swift \
-  HebrewDateMenubar/AppDelegate.swift \
-  HebrewDateMenubar/HebcalClient.swift \
-  -o HebrewDateMenubar.bin
+  Hebcal4Menubar/main.swift \
+  Hebcal4Menubar/AppDelegate.swift \
+  Hebcal4Menubar/HebcalClient.swift \
+  -o Hebcal4Menubar.bin
 
 # Assemble a minimal .app bundle
-APP=HebrewDateMenubar.app
+APP=Hebcal4Menubar.app
 mkdir -p "$APP/Contents/MacOS"
-cp HebrewDateMenubar.bin "$APP/Contents/MacOS/HebrewDateMenubar"
-cp HebrewDateMenubar/Info.plist "$APP/Contents/Info.plist"
+cp Hebcal4Menubar.bin "$APP/Contents/MacOS/Hebcal4Menubar"
+cp Hebcal4Menubar/Info.plist "$APP/Contents/Info.plist"
 
 # Launch it
 open "$APP"
@@ -114,7 +114,7 @@ open "$APP"
 
 Because the bundled `Info.plist` already sets `LSUIElement`, the launched app
 is menubar-only. To stop it, use the **Quit** item in its menu (or
-`killall HebrewDateMenubar`).
+`killall Hebcal4Menubar`).
 
 > Command-line builds are unsigned. macOS may warn on first launch
 > (right-click → Open to bypass Gatekeeper once). For a signed, distributable
@@ -127,7 +127,7 @@ is menubar-only. To stop it, use the **Quit** item in its menu (or
 Either build path produces a normal `.app`. To start it automatically:
 
 **System Settings → General → Login Items → Open at Login → `+`**, then select
-`HebrewDateMenubar.app`.
+`Hebcal4Menubar.app`.
 
 ---
 

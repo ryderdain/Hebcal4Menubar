@@ -40,7 +40,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "…"
+
+        // Show the calendar icon to the left of the date text. The image is
+        // bundled as "MenubarIcon" (see make_icons.sh + Asset Catalog setup in
+        // ICON_NOTES.md). If it's missing we just show text, so the app still
+        // works before you've added the asset.
+        if let button = statusItem.button {
+            if let icon = NSImage(named: "MenubarIcon") {
+                icon.size = NSSize(width: 18, height: 18)
+                // Template mode lets macOS tint the icon for light/dark menu
+                // bars automatically. Only looks right for a monochrome icon;
+                // for a full-color icon, set this to false (see ICON_NOTES.md).
+                icon.isTemplate = true
+                button.image = icon
+                button.imagePosition = .imageLeading
+            }
+            button.title = "…"
+        }
 
         buildMenu()
         statusItem.menu = menu
@@ -102,6 +118,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         attribution.target = self
         menu.addItem(attribution)
 
+        // Flaticon Free License attribution (visible spot).
+        let iconCredit = NSMenuItem(title: "Icon: Freepik / Flaticon",
+                                    action: #selector(openFlaticon), keyEquivalent: "")
+        iconCredit.target = self
+        menu.addItem(iconCredit)
+
         let quit = NSMenuItem(title: "Quit", action: #selector(NSApp.terminate(_:)),
                               keyEquivalent: "q")
         menu.addItem(quit)
@@ -127,6 +149,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func manualRefresh() { refresh() }
     @objc private func openHebcal() {
         if let url = URL(string: "https://www.hebcal.com/converter") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    @objc private func openFlaticon() {
+        if let url = URL(string: "https://www.flaticon.com/free-icon/calendar_19034368") {
             NSWorkspace.shared.open(url)
         }
     }
