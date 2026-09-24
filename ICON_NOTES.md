@@ -28,7 +28,7 @@ sizes. Then in the target's **General → App Icons and Launch Screen**, make
 sure **App Icon Source** is set to **AppIcon**.
 
 (If you built from the command line instead, drop `AppIcon.icns` into
-`HebrewDateMenubar.app/Contents/Resources/` and add `CFBundleIconFile` =
+`Hebcal4Menubar.app/Contents/Resources/` and add `CFBundleIconFile` =
 `AppIcon` to `Info.plist`.)
 
 ## Step 2 — the menubar icon (the important nuance)
@@ -37,6 +37,7 @@ The status bar is only ~18pt tall and supports light **and** dark menu bars.
 There are two ways to go, and they look very different:
 
 ### Option A — template (monochrome) — recommended
+
 A **template image** is a black-on-transparent silhouette. macOS automatically
 tints it (dark in a light menu bar, light in a dark menu bar), so it always
 looks native. `AppDelegate.swift` is already set up for this:
@@ -47,21 +48,31 @@ and flatten the artwork to a single solid color on transparency. A multi-color
 calendar won't tint correctly. If your chosen icon is mostly one color already,
 it may work as-is; if it's colorful, either simplify it or use Option B.
 
+> The `MenubarIcon.png` and `MenubarIcon@2x.png` files in this repository are
+> full-color images, not template images. As a template, each file shows as a
+> solid white area with two small tabs at the top. Thus, the command-line
+> build in `XCODE_SETUP.md` does not copy these files, and the menubar shows
+> the date text only.
+
 In the **Asset Catalog**: create a new **Image Set** named `MenubarIcon`, drag
 `MenubarIcon.png` into the **1x** slot and `MenubarIcon@2x.png` into **2x**.
 Select the image set → in the **Attributes inspector**, set **Render As** to
 **Template Image** (this is the asset-catalog equivalent of `isTemplate`).
 
 ### Option B — full color
+
 If you'd rather keep the icon's colors, open `AppDelegate.swift` and change:
 
 ```swift
 icon.isTemplate = true
 ```
+
 to
+
 ```swift
 icon.isTemplate = false
 ```
+
 and set the image set's **Render As** to **Original Image**. It won't adapt to
 the menu bar background, but it'll keep its colors.
 
@@ -77,7 +88,7 @@ icon's author (Freepik) is filled in to both spots:
 1. **In-app menu line** — `AppDelegate.swift` shows `Icon: Freepik / Flaticon`,
    which opens the source page when clicked.
 2. **CREDITS.md** — the acknowledgements file carries the
-   "Icon made by Freepik from www.flaticon.com" credit.
+   "Icon made by Freepik from [www.flaticon.com](https://www.flaticon.com)" credit.
 
 Together these satisfy the license's "visible spot / credits section"
 requirement for a desktop app. No further action needed unless you swap the

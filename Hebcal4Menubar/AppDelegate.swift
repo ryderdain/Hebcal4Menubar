@@ -27,6 +27,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var modeAuto: NSMenuItem!
     private var modeOn: NSMenuItem!
     private var modeOff: NSMenuItem!
+    private var lockShow: NSMenuItem!
+    private var lockAboveDate: NSMenuItem!
+    private var lockBottom: NSMenuItem!
+    private var lockGlass: NSMenuItem!
+    private var lockPlain: NSMenuItem!
+
+    private var lockOverlay: LockScreenOverlay!
 
     // State
     private var style: MenubarStyle = .translit
@@ -57,6 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             button.title = "…"
         }
+
+        lockOverlay = LockScreenOverlay()
 
         buildMenu()
         statusItem.menu = menu
@@ -106,6 +115,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sunsetParent.submenu = sunsetMenu
         menu.addItem(sunsetParent)
 
+        // Lock screen submenu
+        let lockMenu = NSMenu()
+        lockShow = NSMenuItem(title: "Show on lock screen",
+                              action: #selector(toggleLockScreen), keyEquivalent: "")
+        lockAboveDate = NSMenuItem(title: "Position: above date",
+                                    action: #selector(setLockAboveDate), keyEquivalent: "")
+        lockBottom = NSMenuItem(title: "Position: near bottom",
+                                action: #selector(setLockBottom), keyEquivalent: "")
+        lockGlass = NSMenuItem(title: "Style: glass (like the native date)",
+                               action: #selector(setLockGlass), keyEquivalent: "")
+        lockPlain = NSMenuItem(title: "Style: plain white",
+                               action: #selector(setLockPlain), keyEquivalent: "")
+        [lockShow, lockAboveDate, lockBottom, lockGlass, lockPlain].forEach { $0?.target = self }
+        lockMenu.addItem(lockShow)
+        lockMenu.addItem(.separator())
+        lockMenu.addItem(lockAboveDate)
+        lockMenu.addItem(lockBottom)
+        lockMenu.addItem(.separator())
+        lockMenu.addItem(lockGlass)
+        lockMenu.addItem(lockPlain)
+        let lockParent = NSMenuItem(title: "Lock screen", action: nil, keyEquivalent: "")
+        lockParent.submenu = lockMenu
+        if !lockOverlay.isSupported {
+            lockParent.title = "Lock screen (unavailable on this macOS)"
+            lockParent.isEnabled = false
+        }
+        menu.addItem(lockParent)
+
         let refreshItem = NSMenuItem(title: "Refresh now",
                                      action: #selector(manualRefresh), keyEquivalent: "r")
         refreshItem.target = self
@@ -137,6 +174,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         modeAuto.state = sunsetMode == .auto ? .on : .off
         modeOn.state = sunsetMode == .on ? .on : .off
         modeOff.state = sunsetMode == .off ? .on : .off
+        lockShow.state = lockOverlay.isEnabled ? .on : .off
+        lockAboveDate.state = lockOverlay.position == .aboveDate ? .on : .off
+        lockBottom.state = lockOverlay.position == .bottom ? .on : .off
+        lockGlass.state = lockOverlay.style == .glass ? .on : .off
+        lockPlain.state = lockOverlay.style == .plain ? .on : .off
     }
 
     // MARK: - Actions
@@ -146,6 +188,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func setModeAuto() { sunsetMode = .auto; syncCheckmarks(); refresh() }
     @objc private func setModeOn()   { sunsetMode = .on;   syncCheckmarks(); refresh() }
     @objc private func setModeOff()  { sunsetMode = .off;  syncCheckmarks(); refresh() }
+    @objc private func toggleLockScreen() { lockOverlay.isEnabled.toggle(); syncCheckmarks() }
+    @objc private func setLockAboveDate() { lockOverlay.position = .aboveDate; syncCheckmarks() }
+    @objc private func setLockBottom() { lockOverlay.position = .bottom; syncCheckmarks() }
+    @objc private func setLockGlass() { lockOverlay.style = .glass; syncCheckmarks() }
+    @objc private func setLockPlain() { lockOverlay.style = .plain; syncCheckmarks() }
     @objc private func manualRefresh() { refresh() }
     @objc private func openHebcal() {
         if let url = URL(string: "https://www.hebcal.com/converter") {
@@ -206,6 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func render(_ d: HebrewDate) {
         statusItem.button?.title = title(for: d)
+        lockOverlay.setText(title(for: d))
         hebrewItem.title = d.hebrew
         gregorianItem.title = Self.gregorianFormatter.string(from: Date())
 

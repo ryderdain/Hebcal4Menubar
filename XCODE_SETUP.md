@@ -43,6 +43,7 @@ A menubar app has no window, so delete the GUI scaffolding Xcode made:
    - `main.swift`
    - `AppDelegate.swift`
    - `HebcalClient.swift`
+   - `LockScreenOverlay.swift`
    - (you do not need to add `Info.plist` as a source file — see step 4)
 3. Make sure **"Copy items if needed"** is checked and the **target** box is
    ticked so they're compiled.
@@ -91,34 +92,56 @@ style** and **Sunset mode** submenus, refresh, and Hebcal attribution.
 ## Option B — Build from the command line (fastest, no project file)
 
 If you just want a running `.app` without clicking through Xcode, you need the
-Xcode command-line tools (`xcode-select --install`). Then from inside the
-`Hebcal4Menubar/` folder:
+Xcode command-line tools (`xcode-select --install`). Then, from the root
+folder of the repository:
 
 ```bash
-# Compile the three sources into one binary
+# Compile the four source files into one binary (build/ is git-ignored)
+mkdir -p build
 swiftc -O \
   Hebcal4Menubar/main.swift \
   Hebcal4Menubar/AppDelegate.swift \
   Hebcal4Menubar/HebcalClient.swift \
-  -o Hebcal4Menubar.bin
+  Hebcal4Menubar/LockScreenOverlay.swift \
+  -o build/Hebcal4Menubar
 
 # Assemble a minimal .app bundle
-APP=Hebcal4Menubar.app
-mkdir -p "$APP/Contents/MacOS"
-cp Hebcal4Menubar.bin "$APP/Contents/MacOS/Hebcal4Menubar"
+APP=build/Hebcal4Menubar.app
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp build/Hebcal4Menubar "$APP/Contents/MacOS/Hebcal4Menubar"
 cp Hebcal4Menubar/Info.plist "$APP/Contents/Info.plist"
+cp Hebcal4Menubar/AppIcon.icns "$APP/Contents/Resources/"
+codesign --sign - --force "$APP"   # ad-hoc signature
 
 # Launch it
 open "$APP"
+```
+
+Do not copy `MenubarIcon.png` or `MenubarIcon@2x.png` into the bundle. These
+files are full-color images. The app shows the menubar icon as a template
+image, thus macOS shows a full-color image as a solid white area. Refer to
+`ICON_NOTES.md`.
+
+To install the app, copy the bundle to `/Applications`:
+
+```bash
+killall Hebcal4Menubar 2>/dev/null
+ditto build/Hebcal4Menubar.app /Applications/Hebcal4Menubar.app
+open /Applications/Hebcal4Menubar.app
 ```
 
 Because the bundled `Info.plist` already sets `LSUIElement`, the launched app
 is menubar-only. To stop it, use the **Quit** item in its menu (or
 `killall Hebcal4Menubar`).
 
-> Command-line builds are unsigned. macOS may warn on first launch
-> (right-click → Open to bypass Gatekeeper once). For a signed, distributable
-> app, use the Xcode project in Option A and set your signing team.
+> The command-line build has only an ad-hoc signature. macOS can show a
+> warning at the first launch (right-click → Open to bypass Gatekeeper one
+> time). For a signed app that you can give to other persons, use the Xcode
+> project in Option A and set your signing team.
+>
+> Tests of the lock screen date used only the command-line build, which has
+> no App Sandbox. The lock screen date uses a private framework. If you use
+> the App Sandbox in Option A, make sure that the lock screen date operates.
 
 ---
 
@@ -142,4 +165,4 @@ static let munich = Location(latitude: 40.7128, longitude: -74.0060) // NYC
 
 The Zmanim API also accepts a GeoNames ID or US ZIP; you'd extend `Location`
 and its `queryItems` to emit `geonameid=` or `zip=` instead of lat/long. See
-the location notes at https://www.hebcal.com/home/4912.
+the location notes at <https://www.hebcal.com/home/4912>.
