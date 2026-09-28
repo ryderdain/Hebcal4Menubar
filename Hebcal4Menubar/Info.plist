@@ -28,6 +28,13 @@
     <key>LSUIElement</key>
     <true/>
 
+    <!-- Location Services: the sunset time follows the Mac's location.
+         Without permission, the app uses the fallback place (Munich). -->
+    <key>NSLocationUsageDescription</key>
+    <string>Hebcal4Menubar uses your approximate location to calculate the local sunset, which starts the new Hebrew day.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Hebcal4Menubar uses your approximate location to calculate the local sunset, which starts the new Hebrew day.</string>
+
     <key>NSHumanReadableCopyright</key>
     <string>Hebrew date content © Hebcal.com, CC-BY 4.0</string>
 </dict>

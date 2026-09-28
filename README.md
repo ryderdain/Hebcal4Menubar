@@ -59,8 +59,37 @@ The Hebcal converter's `gs=on` flag only means "treat as after sunset"; it
 doesn't know *when* sunset is. So in Auto mode the app first calls the **Zmanim
 API** for today's `sunset` (an ISO-8601 time with timezone offset for your
 location), compares it to the current time, and only then asks the converter
-for the advanced date if sunset has passed. Location defaults to Munich and is
-a one-line change in both versions.
+for the advanced date if sunset has passed. The Swift version uses the Mac's
+current location (see [Location](#location)); the Python version uses Munich.
+
+## Location
+
+The Swift version calculates the sunset for the current location of the Mac. It uses Location Services with a precision of approximately 1 km. It gets the time zone and the name of the location from the Apple geocoding service.
+
+When the current location is not available, the app uses a fallback location. The default fallback location is Munich. The app uses the fallback location in these conditions:
+
+- You did not give permission for Location Services, or you set **Use current location** to off.
+- The Mac cannot find its location, and the app has no location from before.
+
+The sunset line in the menu shows the location, for example "Sunset 18:59 in Munich (before sunset)". The **Location** submenu shows the location that the app uses, and the cause.
+
+To set a different fallback location:
+
+1. In the menu, select **Location** > **Set fallback location…**.
+2. Type a city, for example `Jerusalem`. You can also type coordinates as `lat, lon`, or as `lat, lon, Area/City` with a time zone.
+3. Click **Set**.
+
+To use Munich again, select **Location** > **Reset fallback to Munich**.
+
+When the app starts for the first time, macOS shows a permission dialog for your location. If you do not give permission, open **System Settings** > **Privacy & Security** > **Location Services** and set **Hebcal4Menubar** to on. The **Location** submenu then shows a menu item that opens these settings.
+
+macOS keeps the permission for one signature of the app. `install.sh` gives the app an ad-hoc signature, which changes with each build. Thus, macOS can show the permission dialog again after each installation. To keep the permission, sign the app with a certificate:
+
+```bash
+CODESIGN_IDENTITY='Apple Development: …' bash install.sh | bash
+```
+
+The Python version uses the coordinates in its code (Munich) and does not use Location Services.
 
 ## Learning and davening
 
