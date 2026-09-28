@@ -25,18 +25,33 @@ zmanim API for sunset.
 - Refreshes every ~2 min so midnight and sunset rollovers happen on their own.
 - **Lock screen date** (Swift version only): the Hebrew date shows above the
   macOS date on the lock screen. See [Lock screen date](#lock-screen-date).
+- **Learning and davening** (Swift version only): Daf Yomi, Mishnah Yomi,
+  Yerushalmi Yomi, Nach Yomi and the Torah reading, and the day's changes to
+  the davening for your nusach. See [Learning and davening](#learning-and-davening).
 - Degrades gracefully offline: keeps the last good value with a ⚠, and if
   sunset can't be fetched, Auto mode safely falls back to the civil day.
+
+## Install the Swift version
+
+To build and install the Swift version, use `install.sh` in the root folder of the repository:
+
+```bash
+bash install.sh          # show the commands
+bash install.sh | bash   # build and install
+```
+
+For the script, it is necessary to have Bash 4.2 or higher and the Xcode command-line tools. For more information, refer to Option B in `XCODE_SETUP.md`.
 
 ## Which should I run?
 
 | | Python | Swift |
 | --- | --- | --- |
-| Setup | `pip3 install rumps`, run | Create Xcode project (guide included) |
+| Setup | `pip3 install rumps`, run | `bash install.sh \| bash`, or an Xcode project (guide included) |
 | Startup speed | instant | compiled, slightly faster runtime |
 | Distribution | needs Python + rumps | self-contained `.app`, signable |
 | Best for | quick use, hacking | learning native macOS, sharing |
 | Lock screen date | no | yes |
+| Learning and davening | no | yes |
 
 ## Sunset awareness — how it actually works
 
@@ -46,6 +61,27 @@ API** for today's `sunset` (an ISO-8601 time with timezone offset for your
 location), compares it to the current time, and only then asks the converter
 for the advanced date if sunset has passed. Location defaults to Munich and is
 a one-line change in both versions.
+
+## Learning and davening
+
+The Swift version shows two more sections in the menu, below the sunset line. The Python version does not have these sections.
+
+### Learning
+
+The **Learning** section shows the daily learning schedules and the Torah reading for the Hebrew day on the menu:
+
+- Daf Yomi, Mishnah Yomi, Yerushalmi Yomi and Nach Yomi. Click a line to open the text on Sefaria.
+- The Torah reading, when there is one: Monday and Thursday, Rosh Chodesh, fasts, festivals and Shabbat.
+
+The app gets these data from the Hebcal API one time for each Hebrew day. When the Mac is offline, the menu keeps the last data. To show or hide a schedule, use the **Learning schedules** submenu. The **Menubar style** submenu also sets the language of the learning lines.
+
+### Davening
+
+The **Davening** section shows the changes to the prayers for the Hebrew day on the menu. Examples are Ya'aleh v'yavo, Hallel, Tachanun, Sefirat haOmer and Kiddush Levanah. The app calculates these changes on your Mac. Thus, this section operates without a network connection.
+
+Use the **Nusach** submenu to select Ashkenaz, Sefard (chassidic), Chabad or Edot HaMizrach. In the same submenu, select **Eretz Yisrael (Israel customs)** for the customs of Israel. The default is Ashkenaz in the diaspora.
+
+`DAVENING_RULES.md` gives all the rules and a test table. `tools/verify.sh` compares the calendar data of the app with Hebcal.
 
 ## Lock screen date
 

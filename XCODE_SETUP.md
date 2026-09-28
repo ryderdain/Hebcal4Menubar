@@ -1,6 +1,6 @@
 # Building the Swift Version in Xcode
 
-This walks you through creating a native macOS menubar app from the four Swift
+This walks you through creating a native macOS menubar app from the six Swift
 source files in `Hebcal4Menubar/`. No prior Xcode experience assumed.
 
 The app has no window and no Dock icon — it lives entirely in the menubar. That
@@ -39,11 +39,13 @@ A menubar app has no window, so delete the GUI scaffolding Xcode made:
 ### 3. Add the source files
 
 1. Delete Xcode's generated `AppDelegate.swift` (we have our own).
-2. **File → Add Files to "Hebcal4Menubar"…**, then add all four:
+2. **File → Add Files to "Hebcal4Menubar"…**, then add all six:
    - `main.swift`
    - `AppDelegate.swift`
    - `HebcalClient.swift`
    - `LockScreenOverlay.swift`
+   - `HebrewDay.swift`
+   - `DaveningRules.swift`
    - (you do not need to add `Info.plist` as a source file — see step 4)
 3. Make sure **"Copy items if needed"** is checked and the **target** box is
    ticked so they're compiled.
@@ -89,57 +91,57 @@ style** and **Sunset mode** submenus, refresh, and Hebcal attribution.
 
 ---
 
-## Option B — Build from the command line (fastest, no project file)
+## Option B — Build and install with `install.sh` (no project file)
 
-If you just want a running `.app` without clicking through Xcode, you need the
-Xcode command-line tools (`xcode-select --install`). Then, from the root
-folder of the repository:
+`install.sh` builds the app and installs it in `/Applications`. When you start the script, it does not change your system. It only shows the commands that it will use. To use the commands, send them to `bash`.
 
-```bash
-# Compile the four source files into one binary (build/ is git-ignored)
-mkdir -p build
-swiftc -O \
-  Hebcal4Menubar/main.swift \
-  Hebcal4Menubar/AppDelegate.swift \
-  Hebcal4Menubar/HebcalClient.swift \
-  Hebcal4Menubar/LockScreenOverlay.swift \
-  -o build/Hebcal4Menubar
+Before you start, make sure that you have these items:
 
-# Assemble a minimal .app bundle
-APP=build/Hebcal4Menubar.app
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp build/Hebcal4Menubar "$APP/Contents/MacOS/Hebcal4Menubar"
-cp Hebcal4Menubar/Info.plist "$APP/Contents/Info.plist"
-cp Hebcal4Menubar/AppIcon.icns "$APP/Contents/Resources/"
-codesign --sign - --force "$APP"   # ad-hoc signature
+- The Xcode command-line tools (`xcode-select --install`).
+- Bash 4.2 or higher (`brew install bash`). The Bash of macOS (`/bin/bash`) is version 3.2.
 
-# Launch it
-open "$APP"
-```
+1. Go to the root folder of the repository.
+2. Show the commands and examine them:
 
-Do not copy `MenubarIcon.png` or `MenubarIcon@2x.png` into the bundle. These
-files are full-color images. The app shows the menubar icon as a template
-image, thus macOS shows a full-color image as a solid white area. Refer to
-`ICON_NOTES.md`.
+    ```bash
+    bash install.sh
+    ```
 
-To install the app, copy the bundle to `/Applications`:
+3. Build and install the app:
 
-```bash
-killall Hebcal4Menubar 2>/dev/null
-ditto build/Hebcal4Menubar.app /Applications/Hebcal4Menubar.app
-open /Applications/Hebcal4Menubar.app
-```
+    ```bash
+    bash install.sh | bash
+    ```
+
+The script does these steps:
+
+- It compiles all Swift files in `Hebcal4Menubar/` into `build/`. Git ignores `build/`.
+- It assembles `build/Hebcal4Menubar.app` and gives it an ad-hoc signature.
+- If the app operates, it stops the app. It moves the copy that is in `/Applications` to the Trash.
+- It copies the new app to `/Applications` and starts the app.
+
+Other commands:
+
+| Command | Result |
+| --- | --- |
+| `bash install.sh build_app \| bash` | Builds the app in `build/`. The script does not install the app. |
+| `bash install.sh install_app \| bash` | Installs the last build. The script does not compile. |
+| `INSTALL_DIR=~/Applications bash install.sh \| bash` | Installs the app in a different folder. |
+
+If a step has an error, the steps after it do not start. The last line that starts with `==>` shows the step with the error. Correct the cause, then use the same command again.
+
+The script gets the app name, the executable name and the icon from `Info.plist`. The script does not copy `MenubarIcon.png` or `MenubarIcon@2x.png` into the bundle. These files are full-color images. The app shows the menubar icon as a template image, thus macOS shows a full-color image as a solid white area. Refer to `ICON_NOTES.md`.
 
 Because the bundled `Info.plist` already sets `LSUIElement`, the launched app
 is menubar-only. To stop it, use the **Quit** item in its menu (or
 `killall Hebcal4Menubar`).
 
-> The command-line build has only an ad-hoc signature. macOS can show a
+> The `install.sh` build has only an ad-hoc signature. macOS can show a
 > warning at the first launch (right-click → Open to bypass Gatekeeper one
 > time). For a signed app that you can give to other persons, use the Xcode
 > project in Option A and set your signing team.
 >
-> Tests of the lock screen date used only the command-line build, which has
+> Tests of the lock screen date used only the `install.sh` build, which has
 > no App Sandbox. The lock screen date uses a private framework. If you use
 > the App Sandbox in Option A, make sure that the lock screen date operates.
 
