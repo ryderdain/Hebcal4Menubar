@@ -165,7 +165,7 @@ The app uses the current location of the Mac. To change the fallback location, s
 To change the default fallback location in the code, edit `Place.munich` in `LocationProvider.swift`:
 
 ```swift
-static let munich = Place(name: "New York", latitude: 40.7128, longitude: -74.0060, tzid: "America/New_York")
+static let munich = Place(name: "New York", latitude: 40.7128, longitude: -74.0060, tzid: "America/New_York", elevation: 10)
 ```
 
 Set `tzid` to the time zone of the location, not to the time zone of your Mac. If there is no `tzid`, the Zmanim API does not give the sunset time (HTTP 400). The menu then shows "Sunset time unavailable".

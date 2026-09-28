@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let locationStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let fallbackInfoItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private var useCurrentItem: NSMenuItem!
+    private var useElevationItem: NSMenuItem!
     private var openLocationSettingsItem: NSMenuItem!
     private var effectiveAfterSunset = false
     private var timer: Timer?
@@ -206,6 +207,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     action: #selector(toggleUseCurrent), keyEquivalent: "")
         useCurrentItem.target = self
         locationMenu.addItem(useCurrentItem)
+        useElevationItem = NSMenuItem(title: "Use elevation for sunset",
+                                      action: #selector(toggleUseElevation), keyEquivalent: "")
+        useElevationItem.target = self
+        locationMenu.addItem(useElevationItem)
         locationMenu.addItem(.separator())
         locationMenu.addItem(fallbackInfoItem)
         let setFallback = NSMenuItem(title: "Set fallback location…",
@@ -309,6 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let url = sender.representedObject as? URL { NSWorkspace.shared.open(url) }
     }
     @objc private func toggleUseCurrent() { locationProvider.useCurrent.toggle() }
+    @objc private func toggleUseElevation() { locationProvider.useElevation.toggle() }
     @objc private func resetFallback() { locationProvider.fallback = .munich }
     @objc private func openLocationSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") {
@@ -338,11 +344,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .auto:
             let startOfDay = Calendar.current.startOfDay(for: today)
             let place = locationProvider.effective.place
-            if sunsetValidFor != startOfDay || cachedSunset == nil || sunsetPlaceKey != place.cacheKey {
-                sunsetPlaceKey = place.cacheKey
+            let useElevation = locationProvider.useElevation
+            let key = place.cacheKey + (useElevation ? "|elev" : "")
+            if sunsetValidFor != startOfDay || cachedSunset == nil || sunsetPlaceKey != key {
+                sunsetPlaceKey = key
                 sunsetPlaceName = place.name
+                if useElevation, let e = place.elevation, e > 0 { sunsetPlaceName += ", \(Int(e.rounded())) m" }
                 do {
-                    cachedSunset = try await HebcalClient.sunset(for: today, location: place.location)
+                    cachedSunset = try await HebcalClient.sunset(
+                        for: today, location: place.location(useElevation: useElevation))
                     sunsetError = cachedSunset == nil ? "no sunset in the response" : nil
                 } catch {
                     cachedSunset = nil
@@ -454,15 +464,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// if the place is different, fetch the sunset for the new place.
     private func locationChanged() {
         updateLocationItems()
-        if locationProvider.effective.place.cacheKey != sunsetPlaceKey { refresh() }
+        let key = locationProvider.effective.place.cacheKey + (locationProvider.useElevation ? "|elev" : "")
+        if key != sunsetPlaceKey { refresh() }
     }
 
     private func updateLocationItems() {
         guard useCurrentItem != nil else { return }
         locationStatusItem.title = locationProvider.statusLine
         useCurrentItem.state = locationProvider.useCurrent ? .on : .off
+        useElevationItem.state = locationProvider.useElevation ? .on : .off
         let fb = locationProvider.fallback
-        fallbackInfoItem.title = "Fallback: \(fb.name) (\(fb.tzid))"
+        fallbackInfoItem.title = "Fallback: \(fb.name) (\(fb.tzid)\(fb.elevationText.map { ", " + $0 } ?? ""))"
         openLocationSettingsItem.isHidden = !locationProvider.needsSystemSettings
     }
 
@@ -473,9 +485,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = "Set fallback location"
         alert.informativeText = "Used for sunset when the current location is not available.\n"
             + "Enter a city (for example Jerusalem), or coordinates as “lat, lon”, "
-            + "optionally with a time zone: “48.14, 11.58, Europe/Berlin”."
+            + "optionally with a time zone and an elevation in metres: "
+            + "“48.14, 11.58, Europe/Berlin, 524”."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-        field.placeholderString = "City, or lat, lon[, Area/City]"
+        field.placeholderString = "City, or lat, lon[, Area/City[, metres]]"
         field.stringValue = prefill
         alert.accessoryView = field
         alert.addButton(withTitle: "Set")

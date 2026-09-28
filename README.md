@@ -76,7 +76,7 @@ The sunset line in the menu shows the location, for example "Sunset 18:59 in Mun
 To set a different fallback location:
 
 1. In the menu, select **Location** > **Set fallback location…**.
-2. Type a city, for example `Jerusalem`. You can also type coordinates as `lat, lon`, or as `lat, lon, Area/City` with a time zone.
+2. Type a city, for example `Jerusalem`. You can also type coordinates as `lat, lon`, as `lat, lon, Area/City` with a time zone, or as `lat, lon, Area/City, metres` with a time zone and an elevation.
 3. Click **Set**.
 
 To use Munich again, select **Location** > **Reset fallback to Munich**.
@@ -88,6 +88,20 @@ macOS keeps the permission for one signature of the app. `install.sh` gives the 
 ```bash
 CODESIGN_IDENTITY='Apple Development: …' bash install.sh | bash
 ```
+
+### Elevation
+
+Hebcal can calculate the sunset for the elevation of a location. At a high elevation, the sunset occurs after the sunset at sea level. For example, in Munich (524 m) the difference is 5 minutes. This is the same as the **Use elevation** check box in the calendar of hebcal.com.
+
+To use the elevation, select **Location** > **Use elevation for sunset**. The default is off, the same as on hebcal.com.
+
+The app gets the elevation from these sources, in this sequence:
+
+1. Location Services, when the Mac gives a correct altitude. Most Macs do not have GPS. Thus, this source is not frequent.
+2. The Open-Meteo elevation service. The app sends the coordinates to Open-Meteo only when **Use elevation for sunset** is on.
+3. Your entry in **Set fallback location…**, as `lat, lon, Area/City, metres`. For example: `48.14, 11.58, Europe/Berlin, 524`.
+
+Hebcal does not use an elevation of 0 m or less. Thus, for a location below sea level, the app calculates the sunset at sea level.
 
 The Python version uses the coordinates in its code (Munich) and does not use Location Services.
 

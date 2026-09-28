@@ -215,14 +215,23 @@ struct Location {
     /// longitude without it (HTTP 400 "Timezone required"). This is the
     /// location's zone, not the Mac's: the two differ when you travel.
     var tzid: String
+    /// Metres above sea level, or nil to compute sunset at sea level. Hebcal
+    /// uses it only together with `ue=on` (its "use elevation" option), and
+    /// ignores values of 0 or below, so only positive values are sent.
+    var elevation: Double? = nil
 
     static let munich = Location(latitude: 48.1374, longitude: 11.5755, tzid: "Europe/Berlin")
 
     var queryItems: [URLQueryItem] {
-        [
+        var items = [
             URLQueryItem(name: "latitude", value: String(latitude)),
             URLQueryItem(name: "longitude", value: String(longitude)),
             URLQueryItem(name: "tzid", value: tzid),
         ]
+        if let e = elevation, e > 0 {
+            items.append(URLQueryItem(name: "elev", value: String(Int(e.rounded()))))
+            items.append(URLQueryItem(name: "ue", value: "on"))
+        }
+        return items
     }
 }

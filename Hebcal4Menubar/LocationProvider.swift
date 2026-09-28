@@ -17,20 +17,32 @@ struct Place: Codable, Equatable {
     var latitude: Double
     var longitude: Double
     var tzid: String
+    /// Metres above sea level, when known. Optional, so places saved by
+    /// older versions still decode.
+    var elevation: Double?
 
+    /// Elevation 524 m: Hebcal's own value for Munich (GeoNames 2867714).
     static let munich = Place(name: "Munich", latitude: 48.1374, longitude: 11.5755,
-                              tzid: "Europe/Berlin")
+                              tzid: "Europe/Berlin", elevation: 524)
 
-    var location: Location { Location(latitude: latitude, longitude: longitude, tzid: tzid) }
+    func location(useElevation: Bool) -> Location {
+        Location(latitude: latitude, longitude: longitude, tzid: tzid,
+                 elevation: useElevation ? elevation : nil)
+    }
+
+    /// "524 m", or nil when unknown.
+    var elevationText: String? { elevation.map { String(format: "%.0f m", $0) } }
 
     /// Identity for caches: a sunset fetched for one place is not valid for another.
-    var cacheKey: String { String(format: "%.3f,%.3f,%@", latitude, longitude, tzid) }
+    var cacheKey: String {
+        String(format: "%.3f,%.3f,%@,%.0f", latitude, longitude, tzid, elevation ?? -9999)
+    }
 }
 
 enum PlaceSource { case current, fallback }
 
 enum PlaceInputError: LocalizedError {
-    case empty, notFound(String), badCoordinates, noTimeZone, badTimeZone(String)
+    case empty, notFound(String), badCoordinates, noTimeZone, badTimeZone(String), badElevation(String)
 
     var errorDescription: String? {
         switch self {
@@ -39,6 +51,7 @@ enum PlaceInputError: LocalizedError {
         case .badCoordinates:      return "Latitude must be −90…90 and longitude −180…180."
         case .noTimeZone:          return "No time zone found for these coordinates. Add one: “lat, lon, Europe/Berlin”."
         case .badTimeZone(let tz): return "Unknown time zone “\(tz)”. Use an IANA name, for example Europe/Berlin."
+        case .badElevation(let e): return "“\(e)” is not an elevation in metres, for example 524."
         }
     }
 }
@@ -57,6 +70,18 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         static let useCurrent = "location.useCurrent"
         static let fallback = "location.fallback"
         static let current = "location.lastCurrent"
+        static let useElevation = "location.useElevation"
+    }
+
+    /// Compute sunset with the place's elevation, like Hebcal's "use
+    /// elevation" option. Off by default, as on hebcal.com.
+    var useElevation: Bool {
+        get { UserDefaults.standard.bool(forKey: Keys.useElevation) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Keys.useElevation)
+            if newValue { ensureElevations() }
+            notify()
+        }
     }
 
     /// Use the Mac's current location when permitted (default on).
@@ -72,7 +97,11 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     /// The place used when the current location is not available.
     var fallback: Place {
         get { load(Keys.fallback) ?? .munich }
-        set { save(newValue, Keys.fallback); notify() }
+        set {
+            save(newValue, Keys.fallback)
+            if useElevation { ensureElevations() }
+            notify()
+        }
     }
 
     /// Last current location found (kept across launches, so offline works).
@@ -96,7 +125,9 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
     /// One line for the menu that says which place is in use and why.
     var statusLine: String {
-        let (place, source) = effective
+        let (p, source) = effective
+        var place = p
+        if useElevation { place.name += ", " + (p.elevationText ?? "elevation unknown, sea level used") }
         if source == .current { return "Location: \(place.name) (current)" }
         guard useCurrent else { return "Location: \(place.name) (fallback; current location off)" }
         switch manager.authorizationStatus {
@@ -165,9 +196,13 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
             let tz = pm?.timeZone?.identifier ?? TimeZone.current.identifier
             let name = pm?.locality ?? pm?.name
                 ?? String(format: "%.2f, %.2f", loc.coordinate.latitude, loc.coordinate.longitude)
+            // Most Macs have no GPS, so altitude is usually invalid
+            // (verticalAccuracy < 0); then ensureElevations looks it up.
+            let altitude: Double? = loc.verticalAccuracy > 0 ? loc.altitude : nil
             self.current = Place(name: name, latitude: loc.coordinate.latitude,
-                                 longitude: loc.coordinate.longitude, tzid: tz)
+                                 longitude: loc.coordinate.longitude, tzid: tz, elevation: altitude)
             self.lastError = nil
+            if self.useElevation { self.ensureElevations() }
             self.notify()
         }
     }
@@ -181,10 +216,61 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         notify()
     }
 
+    // MARK: Elevation
+
+    /// Fill in a missing elevation for the current and fallback places. Runs
+    /// only while "use elevation" is on, so coordinates go to the elevation
+    /// service only when you want elevation.
+    func ensureElevations() {
+        guard useElevation else { return }
+        if let c = current, c.elevation == nil {
+            Self.lookUpElevation(latitude: c.latitude, longitude: c.longitude) { [weak self] e in
+                guard let self, let e, var now = self.current,
+                      now.latitude == c.latitude, now.longitude == c.longitude else { return }
+                now.elevation = e
+                self.current = now
+                self.notify()
+            }
+        }
+        let fb = fallback
+        if fb.elevation == nil {
+            Self.lookUpElevation(latitude: fb.latitude, longitude: fb.longitude) { [weak self] e in
+                guard let self, let e else { return }
+                var now = self.fallback
+                guard now.latitude == fb.latitude, now.longitude == fb.longitude else { return }
+                now.elevation = e
+                self.save(now, Keys.fallback)
+                self.notify()
+            }
+        }
+    }
+
+    /// Terrain elevation in metres from the Open-Meteo elevation API
+    /// (free, no key; Copernicus 90 m DEM). nil when the lookup fails.
+    static func lookUpElevation(latitude: Double, longitude: Double,
+                                completion: @escaping (Double?) -> Void) {
+        var comps = URLComponents(string: "https://api.open-meteo.com/v1/elevation")!
+        comps.queryItems = [
+            URLQueryItem(name: "latitude", value: String(latitude)),
+            URLQueryItem(name: "longitude", value: String(longitude)),
+        ]
+        guard let url = comps.url else { return completion(nil) }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 10
+        URLSession.shared.dataTask(with: req) { data, resp, _ in
+            struct Resp: Decodable { let elevation: [Double] }
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200, let data,
+                  let e = (try? JSONDecoder().decode(Resp.self, from: data))?.elevation.first
+            else { return completion(nil) }
+            completion(e)
+        }.resume()
+    }
+
     // MARK: Manual fallback entry
 
     /// Resolve user input into a Place. Accepts a city or address, "lat, lon",
-    /// or "lat, lon, Area/City" (an IANA time zone).
+    /// "lat, lon, Area/City" (an IANA time zone), or
+    /// "lat, lon, Area/City, metres" (with elevation).
     static func resolve(_ input: String, geocoder: CLGeocoder = CLGeocoder(),
                         completion: @escaping (Result<Place, Error>) -> Void) {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -200,8 +286,18 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
                 guard TimeZone(identifier: tz) != nil else {
                     return completion(.failure(PlaceInputError.badTimeZone(tz)))
                 }
+                var elevation: Double?
+                if parts.count >= 4 {
+                    let raw = parts[3].replacingOccurrences(of: "m", with: "")
+                        .trimmingCharacters(in: .whitespaces)
+                    guard let e = Double(raw) else {
+                        return completion(.failure(PlaceInputError.badElevation(parts[3])))
+                    }
+                    elevation = e
+                }
                 let name = String(format: "%.2f, %.2f", lat, lon)
-                return completion(.success(Place(name: name, latitude: lat, longitude: lon, tzid: tz)))
+                return completion(.success(Place(name: name, latitude: lat, longitude: lon,
+                                                 tzid: tz, elevation: elevation)))
             }
             geocoder.reverseGeocodeLocation(CLLocation(latitude: lat, longitude: lon)) { pms, _ in
                 guard let pm = pms?.first, let tz = pm.timeZone?.identifier else {
