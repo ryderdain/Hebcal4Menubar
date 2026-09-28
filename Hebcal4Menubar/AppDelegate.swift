@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastDate: HebrewDate?
     private var cachedSunset: Date?
     private var sunsetValidFor: Date?       // start-of-day this sunset belongs to
+    private var sunsetError: String?        // why the last sunset lookup failed
     private var effectiveAfterSunset = false
     private var timer: Timer?
 
@@ -286,7 +287,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .auto:
             let startOfDay = Calendar.current.startOfDay(for: today)
             if sunsetValidFor != startOfDay || cachedSunset == nil {
-                cachedSunset = try? await HebcalClient.sunset(for: today, location: location)
+                do {
+                    cachedSunset = try await HebcalClient.sunset(for: today, location: location)
+                    sunsetError = cachedSunset == nil ? "no sunset in the response" : nil
+                } catch {
+                    cachedSunset = nil
+                    sunsetError = error.localizedDescription
+                }
                 sunsetValidFor = startOfDay
             }
             guard let sunset = cachedSunset else { return false } // fail safe
@@ -366,7 +373,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let state = effectiveAfterSunset ? "after sunset → next day" : "before sunset"
                 sunsetStatusItem.title = "Sunset \(hhmm) (\(state))"
             } else {
-                sunsetStatusItem.title = "Sunset time unavailable (using civil day)"
+                let reason = sunsetError.map { ": \($0)" } ?? ""
+                sunsetStatusItem.title = "Sunset time unavailable\(reason) (using civil day)"
             }
         case .on:  sunsetStatusItem.title = "Mode: always after sunset"
         case .off: sunsetStatusItem.title = "Mode: civil day"

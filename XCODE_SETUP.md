@@ -162,8 +162,10 @@ Sunset is computed for a location (default: Munich). Edit `Location.munich` in
 `HebcalClient.swift`:
 
 ```swift
-static let munich = Location(latitude: 40.7128, longitude: -74.0060) // NYC
+static let munich = Location(latitude: 40.7128, longitude: -74.0060, tzid: "America/New_York") // NYC
 ```
+
+Set `tzid` to the time zone of the location, not to the time zone of your Mac. If there is no `tzid`, the Zmanim API does not give the sunset time (HTTP 400). The menu then shows "Sunset time unavailable".
 
 The Zmanim API also accepts a GeoNames ID or US ZIP; you'd extend `Location`
 and its `queryItems` to emit `geonameid=` or `zip=` instead of lat/long. See

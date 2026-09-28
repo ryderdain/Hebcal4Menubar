@@ -211,13 +211,18 @@ private struct LeyningResponse: Decodable {
 struct Location {
     var latitude: Double
     var longitude: Double
+    /// IANA time zone of the location. The Zmanim API rejects latitude and
+    /// longitude without it (HTTP 400 "Timezone required"). This is the
+    /// location's zone, not the Mac's: the two differ when you travel.
+    var tzid: String
 
-    static let munich = Location(latitude: 48.1374, longitude: 11.5755)
+    static let munich = Location(latitude: 48.1374, longitude: 11.5755, tzid: "Europe/Berlin")
 
     var queryItems: [URLQueryItem] {
         [
             URLQueryItem(name: "latitude", value: String(latitude)),
             URLQueryItem(name: "longitude", value: String(longitude)),
+            URLQueryItem(name: "tzid", value: tzid),
         ]
     }
 }
