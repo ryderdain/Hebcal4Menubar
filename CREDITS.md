@@ -31,3 +31,10 @@ The lock screen date uses a method from
 [SkyLightWindow](https://github.com/Lakr233/SkyLightWindow) by Lakr233,
 with the MIT license. `LockScreenOverlay.swift` contains a shorter version
 of the SkyLight code from that project.
+
+## Molad formula
+
+`HebrewDay.swift` calculates the molad with the formula from Edward M.
+Reingold and Nachum Dershowitz, *Calendrical Calculations*. The learning
+schedules and the Torah reading come from the Hebcal APIs, with the
+CC-BY 4.0 license (refer to "Hebrew calendar data" above).
