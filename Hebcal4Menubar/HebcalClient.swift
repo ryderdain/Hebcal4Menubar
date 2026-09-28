@@ -98,6 +98,44 @@ struct HebcalClient {
         return isoOffset.date(from: iso)
     }
 
+    /// Daily learning schedules for one civil date.
+    static func learning(for date: Date, israel: Bool) async throws -> [LearningItem] {
+        var comps = URLComponents(string: "https://www.hebcal.com/hebcal")!
+        let day = isoDay.string(from: date)
+        comps.queryItems = [
+            URLQueryItem(name: "v", value: "1"),
+            URLQueryItem(name: "cfg", value: "json"),
+            URLQueryItem(name: "start", value: day),
+            URLQueryItem(name: "end", value: day),
+            URLQueryItem(name: "i", value: israel ? "on" : "off"),
+            URLQueryItem(name: "F", value: "on"),       // Daf Yomi
+            URLQueryItem(name: "myomi", value: "on"),   // Mishnah Yomi
+            URLQueryItem(name: "yyomi", value: "on"),   // Yerushalmi Yomi
+            URLQueryItem(name: "nyomi", value: "on"),   // Nach Yomi
+        ]
+        guard let url = comps.url else { throw HebcalError.badURL }
+        return try await get(url, as: LearningResponse.self).items
+            .compactMap { item in LearningKind(rawValue: item.category).map { (item, $0) } }
+            .map { item, kind in
+                LearningItem(kind: kind, title: item.title, hebrew: item.hebrew,
+                             link: item.link.flatMap(URL.init(string:)))
+            }
+    }
+
+    /// The Torah reading for one civil date, if there is one.
+    static func leyning(for date: Date, israel: Bool) async throws -> Leyning? {
+        var comps = URLComponents(string: "https://www.hebcal.com/leyning")!
+        comps.queryItems = [
+            URLQueryItem(name: "cfg", value: "json"),
+            URLQueryItem(name: "date", value: isoDay.string(from: date)),
+            URLQueryItem(name: "i", value: israel ? "on" : "off"),
+        ]
+        guard let url = comps.url else { throw HebcalError.badURL }
+        let resp = try await get(url, as: LeyningResponse.self)
+        guard let first = resp.items.first, let summary = first.summary else { return nil }
+        return Leyning(name: first.name.en, summary: summary)
+    }
+
     // MARK: Date formatters
 
     private static let isoDay: DateFormatter = {
@@ -118,6 +156,53 @@ struct HebcalClient {
 private struct ZmanimResponse: Decodable {
     struct Times: Decodable { let sunset: String? }
     let times: Times
+}
+
+// MARK: - Learning and leyning
+
+/// The learning schedules the menu can show, keyed by Hebcal's category.
+enum LearningKind: String, CaseIterable {
+    case dafyomi, mishnayomi, yerushalmi, nachyomi
+
+    var title: String {
+        switch self {
+        case .dafyomi:    return "Daf Yomi"
+        case .mishnayomi: return "Mishnah Yomi"
+        case .yerushalmi: return "Yerushalmi Yomi"
+        case .nachyomi:   return "Nach Yomi"
+        }
+    }
+}
+
+struct LearningItem {
+    let kind: LearningKind
+    let title: String
+    let hebrew: String?
+    let link: URL?
+}
+
+struct Leyning {
+    let name: String
+    let summary: String
+}
+
+private struct LearningResponse: Decodable {
+    struct Item: Decodable {
+        let title: String
+        let category: String
+        let hebrew: String?
+        let link: String?
+    }
+    let items: [Item]
+}
+
+private struct LeyningResponse: Decodable {
+    struct Item: Decodable {
+        struct Name: Decodable { let en: String }
+        let name: Name
+        let summary: String?
+    }
+    let items: [Item]
 }
 
 // MARK: - Location

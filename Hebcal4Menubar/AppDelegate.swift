@@ -35,6 +35,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var lockOverlay: LockScreenOverlay!
 
+    // Learning + davening (inline sections, rebuilt on every render)
+    private var dynamicItems: [NSMenuItem] = []
+    private var nusachItems: [Nusach: NSMenuItem] = [:]
+    private var israelItem: NSMenuItem!
+    private var learningToggleItems: [LearningKind: NSMenuItem] = [:]
+    private var learning: [LearningItem] = []
+    private var leyning: Leyning?
+    private var learningFetchedFor: String?    // "yyyy-MM-dd|israel" of the cached data
+
+    private var nusach: Nusach {
+        get { Nusach(rawValue: UserDefaults.standard.string(forKey: "nusach") ?? "") ?? .ashkenaz }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "nusach") }
+    }
+    private var israel: Bool {
+        get { UserDefaults.standard.bool(forKey: "israel") }
+        set { UserDefaults.standard.set(newValue, forKey: "israel") }
+    }
+    private func isLearningShown(_ k: LearningKind) -> Bool {
+        UserDefaults.standard.object(forKey: "learning.\(k.rawValue)") as? Bool ?? true
+    }
+
     // State
     private var style: MenubarStyle = .translit
     private var sunsetMode: SunsetMode = .auto
@@ -143,6 +164,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.addItem(lockParent)
 
+        // Davening settings: nusach + Israel/diaspora
+        let daveningMenu = NSMenu()
+        for n in Nusach.allCases {
+            let item = NSMenuItem(title: n.title, action: #selector(setNusach(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = n.rawValue
+            nusachItems[n] = item
+            daveningMenu.addItem(item)
+        }
+        daveningMenu.addItem(.separator())
+        israelItem = NSMenuItem(title: "Eretz Yisrael (Israel customs)",
+                                action: #selector(toggleIsrael), keyEquivalent: "")
+        israelItem.target = self
+        daveningMenu.addItem(israelItem)
+        let daveningParent = NSMenuItem(title: "Nusach", action: nil, keyEquivalent: "")
+        daveningParent.submenu = daveningMenu
+        menu.addItem(daveningParent)
+
+        // Learning schedules shown
+        let learningMenu = NSMenu()
+        for k in LearningKind.allCases {
+            let item = NSMenuItem(title: k.title, action: #selector(toggleLearning(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = k.rawValue
+            learningToggleItems[k] = item
+            learningMenu.addItem(item)
+        }
+        let learningParent = NSMenuItem(title: "Learning schedules", action: nil, keyEquivalent: "")
+        learningParent.submenu = learningMenu
+        menu.addItem(learningParent)
+
         let refreshItem = NSMenuItem(title: "Refresh now",
                                      action: #selector(manualRefresh), keyEquivalent: "r")
         refreshItem.target = self
@@ -179,6 +231,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lockBottom.state = lockOverlay.position == .bottom ? .on : .off
         lockGlass.state = lockOverlay.style == .glass ? .on : .off
         lockPlain.state = lockOverlay.style == .plain ? .on : .off
+        for (n, item) in nusachItems { item.state = n == nusach ? .on : .off }
+        israelItem.state = israel ? .on : .off
+        for (k, item) in learningToggleItems { item.state = isLearningShown(k) ? .on : .off }
     }
 
     // MARK: - Actions
@@ -193,6 +248,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func setLockBottom() { lockOverlay.position = .bottom; syncCheckmarks() }
     @objc private func setLockGlass() { lockOverlay.style = .glass; syncCheckmarks() }
     @objc private func setLockPlain() { lockOverlay.style = .plain; syncCheckmarks() }
+    @objc private func setNusach(_ sender: NSMenuItem) {
+        if let raw = sender.representedObject as? String, let n = Nusach(rawValue: raw) { nusach = n }
+        syncCheckmarks(); rerender()
+    }
+    @objc private func toggleIsrael() {
+        israel.toggle(); learningFetchedFor = nil
+        syncCheckmarks(); refresh()           // Israel changes the learning/leyning data too
+    }
+    @objc private func toggleLearning(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let k = LearningKind(rawValue: raw) else { return }
+        UserDefaults.standard.set(!isLearningShown(k), forKey: "learning.\(k.rawValue)")
+        syncCheckmarks(); rerender()
+    }
+    @objc private func openLink(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL { NSWorkspace.shared.open(url) }
+    }
     @objc private func manualRefresh() { refresh() }
     @objc private func openHebcal() {
         if let url = URL(string: "https://www.hebcal.com/converter") {
@@ -237,10 +308,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let data = try await HebcalClient.hebrewDate(for: today, afterSunset: afterSunset)
             lastDate = data
+            await refreshLearning()
             render(data)
         } catch {
             renderError(error.localizedDescription)
         }
+    }
+
+    /// Fetch learning and leyning once per displayed Hebrew day (and on an
+    /// Israel/diaspora change). Failures keep the previous data.
+    @MainActor
+    private func refreshLearning() async {
+        let civil = currentHebrewDay().civil
+        let key = Self.dayKey.string(from: civil) + "|\(israel)"
+        guard key != learningFetchedFor else { return }
+        do {
+            async let l = HebcalClient.learning(for: civil, israel: israel)
+            async let r = HebcalClient.leyning(for: civil, israel: israel)
+            learning = try await l
+            leyning = try await r
+            learningFetchedFor = key
+        } catch {
+            // Offline: keep what we have; the next refresh retries.
+        }
+    }
+
+    private func currentHebrewDay() -> HDay {
+        HDay.current(at: Date(), afterSunset: effectiveAfterSunset)
     }
 
     // MARK: - Rendering
@@ -262,6 +356,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             eventsItem.title = "No events today"
         }
+
+        renderSections()
 
         switch sunsetMode {
         case .auto:
@@ -288,6 +384,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             eventsItem.title = "Will retry automatically"
         }
     }
+
+    // MARK: - Learning and davening sections
+
+    /// Rebuild the inline Learning and Davening sections under the sunset line.
+    private func renderSections() {
+        dynamicItems.forEach { menu.removeItem($0) }
+        dynamicItems = []
+
+        var items: [NSMenuItem] = []
+        func header(_ title: String) -> NSMenuItem {
+            if #available(macOS 14.0, *) { return NSMenuItem.sectionHeader(title: title) }
+            let item = NSMenuItem(title: title.uppercased(), action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            return item
+        }
+        func info(_ title: String) -> NSMenuItem {
+            NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        }
+
+        // Learning
+        let shown = learning.filter { isLearningShown($0.kind) }
+            .sorted { LearningKind.allCases.firstIndex(of: $0.kind)! < LearningKind.allCases.firstIndex(of: $1.kind)! }
+        if !shown.isEmpty || leyning != nil {
+            items.append(.separator())
+            items.append(header("Learning"))
+            for l in shown {
+                let text = style == .hebrew ? (l.hebrew ?? l.title) : l.title
+                let item = NSMenuItem(title: "\(l.kind.title): \(text)",
+                                      action: l.link == nil ? nil : #selector(openLink(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = l.link
+                items.append(item)
+            }
+            if let r = leyning { items.append(info("Torah reading: \(r.name) — \(r.summary)")) }
+        }
+
+        // Davening
+        let h = currentHebrewDay()
+        let notes = DaveningRules.notes(for: h, nusach: nusach, israel: israel,
+                                        eveningStarted: effectiveAfterSunset)
+        items.append(.separator())
+        items.append(header("Davening · \(nusach.title) · \(israel ? "Israel" : "Diaspora")"))
+        notes.forEach { items.append(info($0)) }
+
+        guard var index = menu.items.firstIndex(of: sunsetStatusItem) else { return }
+        for item in items {
+            index += 1
+            menu.insertItem(item, at: index)
+        }
+        dynamicItems = items
+    }
+
+    private static let dayKey: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     // MARK: - Formatters
 
