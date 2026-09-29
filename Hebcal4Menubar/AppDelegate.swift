@@ -11,7 +11,7 @@ import Cocoa
 enum MenubarStyle: String { case translit, hebrew }
 enum SunsetMode: String { case auto, on, off }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var statusItem: NSStatusItem!
     private let menu = NSMenu()
@@ -21,6 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let gregorianItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let eventsItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let sunsetStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let nextZmanItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let candlesItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let havdalahItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let zmanimParentItem = NSMenuItem(title: "Zmanim", action: nil, keyEquivalent: "")
+    private let zmanimMenu = NSMenu()
 
     private var styleTranslit: NSMenuItem!
     private var styleHebrew: NSMenuItem!
@@ -66,6 +71,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sunsetError: String?        // why the last sunset lookup failed
     private var sunsetPlaceKey: String?     // Place.cacheKey the cached sunset belongs to
     private var sunsetPlaceName = ""
+    private var zmanimToday: [String: Date] = [:]
+    private var zmanimTomorrow: [String: Date] = [:]
+    private var zmanimDay: Date?             // civil day of zmanimToday
+    private var zmanimTimeZone = TimeZone.current   // the place's zone
+    private var shabbatEvents: [ShabbatEvent] = []
+    private var shabbatKey: String?
 
     // Location submenu items we update in place
     private let locationStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -107,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         buildMenu()
         statusItem.menu = menu
+        menu.delegate = self
 
         refresh()
         // Every 2 minutes: cheap, and reliably catches both the midnight
@@ -124,6 +136,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(eventsItem)
         menu.addItem(sunsetStatusItem)
+        menu.addItem(nextZmanItem)
+        menu.addItem(candlesItem)
+        menu.addItem(havdalahItem)
+        zmanimParentItem.submenu = zmanimMenu
+        menu.addItem(zmanimParentItem)
         menu.addItem(.separator())
 
         // Menubar style submenu
@@ -342,27 +359,122 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .on:  return true
         case .off: return false
         case .auto:
-            let startOfDay = Calendar.current.startOfDay(for: today)
-            let place = locationProvider.effective.place
-            let useElevation = locationProvider.useElevation
-            let key = place.cacheKey + (useElevation ? "|elev" : "")
-            if sunsetValidFor != startOfDay || cachedSunset == nil || sunsetPlaceKey != key {
-                sunsetPlaceKey = key
-                sunsetPlaceName = place.name
-                if useElevation, let e = place.elevation, e > 0 { sunsetPlaceName += ", \(Int(e.rounded())) m" }
-                do {
-                    cachedSunset = try await HebcalClient.sunset(
-                        for: today, location: place.location(useElevation: useElevation))
-                    sunsetError = cachedSunset == nil ? "no sunset in the response" : nil
-                } catch {
-                    cachedSunset = nil
-                    sunsetError = error.localizedDescription
-                }
-                sunsetValidFor = startOfDay
-            }
-            guard let sunset = cachedSunset else { return false } // fail safe
+            guard let sunset = cachedSunset else { return false } // fail safe: civil day
             return Date() >= sunset
         }
+    }
+
+    // MARK: - Zmanim
+
+    /// Key for everything that changes the zmanim: place, elevation setting.
+    private var zmanimPlaceKey: String {
+        locationProvider.effective.place.cacheKey + (locationProvider.useElevation ? "|elev" : "")
+    }
+
+    /// Fetch today's and tomorrow's zmanim once per civil day and place, and
+    /// the next candle lighting / havdalah chain. Today's sunset drives Auto
+    /// sunset mode. Failures keep what we had and are shown on the sunset line.
+    @MainActor
+    private func refreshZmanim(now: Date) async {
+        let place = locationProvider.effective.place
+        let useElevation = locationProvider.useElevation
+        let location = place.location(useElevation: useElevation)
+        let key = zmanimPlaceKey
+        let startOfDay = Calendar.current.startOfDay(for: now)
+
+        if sunsetValidFor != startOfDay || cachedSunset == nil || sunsetPlaceKey != key {
+            do {
+                let today = try await HebcalClient.zmanim(for: now, location: location)
+                zmanimToday = today
+                cachedSunset = today["sunset"]
+                sunsetError = nil
+                sunsetValidFor = startOfDay
+                sunsetPlaceKey = key
+                zmanimDay = startOfDay
+                zmanimTimeZone = TimeZone(identifier: place.tzid) ?? .current
+                sunsetPlaceName = place.name
+                if useElevation, let e = place.elevation, e > 0 { sunsetPlaceName += ", \(Int(e.rounded())) m" }
+                // Tomorrow: for "next zman" after tonight's last one. Best effort.
+                let tomorrow = now.addingTimeInterval(86_400)
+                zmanimTomorrow = (try? await HebcalClient.zmanim(for: tomorrow, location: location)) ?? [:]
+            } catch {
+                if sunsetPlaceKey != key { cachedSunset = nil; zmanimToday = [:]; zmanimTomorrow = [:] }
+                sunsetError = error.localizedDescription
+            }
+        }
+
+        let sKey = "\(key)|\(israel)"
+        let stillAhead = shabbatEvents.contains { $0.time > now }
+        if sKey != shabbatKey || !stillAhead {
+            if let events = try? await HebcalClient.nextShabbat(after: now, location: location, israel: israel) {
+                shabbatEvents = events
+                shabbatKey = sKey
+            }
+        }
+    }
+
+    private func renderZmanim(now: Date) {
+        let fmt = DateFormatter()
+        fmt.timeZone = zmanimTimeZone
+        fmt.dateFormat = "HH:mm"
+        let dayFmt = DateFormatter()
+        dayFmt.timeZone = zmanimTimeZone
+        dayFmt.dateFormat = "EEE d MMM"
+        let foreignZone = zmanimTimeZone.identifier != TimeZone.current.identifier
+        let zoneNote = foreignZone ? " (\(zmanimTimeZone.abbreviation(for: now) ?? zmanimTimeZone.identifier))" : ""
+
+        // Next zman, main menu.
+        if let n = Zmanim.next(after: now, in: [zmanimToday, zmanimTomorrow]) {
+            nextZmanItem.title = "Next: \(n.name) \(fmt.string(from: n.time))\(zoneNote) · \(Zmanim.relative(from: now, to: n.time))"
+            nextZmanItem.isHidden = false
+        } else {
+            nextZmanItem.isHidden = true
+        }
+
+        // Candle lighting and havdalah, main menu.
+        let candles = shabbatEvents.filter { $0.kind == .candles }
+        let havdalah = shabbatEvents.first { $0.kind == .havdalah }
+        let stamp = { (t: Date) in "\(dayFmt.string(from: t)) \(fmt.string(from: t))" }
+        candlesItem.title = "Candle lighting: " + candles.map { stamp($0.time) }.joined(separator: " · ") + zoneNote
+        candlesItem.isHidden = candles.isEmpty
+        havdalahItem.title = "Havdalah: " + (havdalah.map { stamp($0.time) } ?? "") + zoneNote
+        havdalahItem.isHidden = havdalah == nil
+
+        // Zmanim submenu: today's list, with the next one marked.
+        zmanimMenu.removeAllItems()
+        guard !zmanimToday.isEmpty else {
+            zmanimParentItem.isHidden = true
+            return
+        }
+        zmanimParentItem.isHidden = false
+        let nextTime = Zmanim.next(after: now, in: [zmanimToday, zmanimTomorrow])?.time
+        let header = "\(sunsetPlaceName) · \(dayFmt.string(from: zmanimDay ?? now))\(zoneNote)"
+        if #available(macOS 14.0, *) {
+            zmanimMenu.addItem(NSMenuItem.sectionHeader(title: header))
+        } else {
+            let h = NSMenuItem(title: header, action: nil, keyEquivalent: ""); h.isEnabled = false
+            zmanimMenu.addItem(h)
+        }
+        let mono = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        for line in Zmanim.lines {
+            let times = line.times(today: zmanimToday, tomorrow: zmanimTomorrow)
+            let parts = times.map { t in t.label.map { "\(fmt.string(from: t.time)) \($0)" } ?? fmt.string(from: t.time) }
+            guard !parts.isEmpty else { continue }
+            let isNext = times.contains { $0.time == nextTime }
+            let text = "\(isNext ? "▸" : "  ") \(line.title): \(parts.joined(separator: " · "))"
+            let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+            item.attributedTitle = NSAttributedString(string: text, attributes: [.font: mono])
+            zmanimMenu.addItem(item)
+        }
+        zmanimMenu.addItem(.separator())
+        let note = NSMenuItem(title: "Candle lighting \(Zmanim.candleLightingMinutes) min before sunset · havdalah at 8.5°",
+                              action: nil, keyEquivalent: "")
+        zmanimMenu.addItem(note)
+    }
+
+    // NSMenuDelegate: recompute "next" and "in N min" whenever the menu opens.
+    func menuWillOpen(_ menu: NSMenu) {
+        if menu === self.menu { renderZmanim(now: Date()) }
     }
 
     // MARK: - Refresh
@@ -375,6 +487,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshAsync() async {
         let today = Date()
         locationProvider.refreshIfStale()
+        await refreshZmanim(now: today)
         let afterSunset = await resolveAfterSunset(today: today)
         effectiveAfterSunset = afterSunset
         do {
@@ -431,19 +544,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         renderSections()
 
-        switch sunsetMode {
-        case .auto:
-            if let s = cachedSunset {
-                let hhmm = Self.timeFormatter.string(from: s)
-                let state = effectiveAfterSunset ? "after sunset → next day" : "before sunset"
-                sunsetStatusItem.title = "Sunset \(hhmm) in \(sunsetPlaceName) (\(state))"
-            } else {
-                let reason = sunsetError.map { ": \($0)" } ?? ""
-                sunsetStatusItem.title = "Sunset time unavailable\(reason) (using civil day)"
+        if let s = cachedSunset {
+            let fmt = DateFormatter()
+            fmt.timeZone = zmanimTimeZone
+            fmt.dateFormat = "HH:mm"
+            let state: String
+            switch sunsetMode {
+            case .auto: state = effectiveAfterSunset ? "after sunset → next day" : "before sunset"
+            case .on:   state = "mode: always after sunset"
+            case .off:  state = "mode: civil day"
             }
-        case .on:  sunsetStatusItem.title = "Mode: always after sunset"
-        case .off: sunsetStatusItem.title = "Mode: civil day"
+            sunsetStatusItem.title = "Sunset \(fmt.string(from: s)) in \(sunsetPlaceName) (\(state))"
+        } else {
+            let reason = sunsetError.map { ": \($0)" } ?? ""
+            sunsetStatusItem.title = "Sunset time unavailable\(reason) (using civil day)"
         }
+        renderZmanim(now: Date())
     }
 
     private func renderError(_ msg: String) {
@@ -464,8 +580,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// if the place is different, fetch the sunset for the new place.
     private func locationChanged() {
         updateLocationItems()
-        let key = locationProvider.effective.place.cacheKey + (locationProvider.useElevation ? "|elev" : "")
-        if key != sunsetPlaceKey { refresh() }
+        if zmanimPlaceKey != sunsetPlaceKey { refresh() }
     }
 
     private func updateLocationItems() {
@@ -556,7 +671,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         items.append(header("Davening · \(nusach.title) · \(israel ? "Israel" : "Diaspora")"))
         notes.forEach { items.append(info($0)) }
 
-        guard var index = menu.items.firstIndex(of: sunsetStatusItem) else { return }
+        guard var index = menu.items.firstIndex(of: zmanimParentItem) else { return }
         for item in items {
             index += 1
             menu.insertItem(item, at: index)
@@ -580,9 +695,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return f
     }()
 
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "H:mm"
-        return f
-    }()
 }

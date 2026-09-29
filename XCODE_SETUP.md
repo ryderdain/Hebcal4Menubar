@@ -1,6 +1,6 @@
 # Building the Swift Version in Xcode
 
-This walks you through creating a native macOS menubar app from the seven Swift
+This walks you through creating a native macOS menubar app from the eight Swift
 source files in `Hebcal4Menubar/`. No prior Xcode experience assumed.
 
 The app has no window and no Dock icon — it lives entirely in the menubar. That
@@ -39,7 +39,7 @@ A menubar app has no window, so delete the GUI scaffolding Xcode made:
 ### 3. Add the source files
 
 1. Delete Xcode's generated `AppDelegate.swift` (we have our own).
-2. **File → Add Files to "Hebcal4Menubar"…**, then add all seven:
+2. **File → Add Files to "Hebcal4Menubar"…**, then add all eight:
    - `main.swift`
    - `AppDelegate.swift`
    - `HebcalClient.swift`
@@ -47,6 +47,7 @@ A menubar app has no window, so delete the GUI scaffolding Xcode made:
    - `HebrewDay.swift`
    - `DaveningRules.swift`
    - `LocationProvider.swift`
+   - `Zmanim.swift`
    - (you do not need to add `Info.plist` as a source file — see step 4)
 3. Make sure **"Copy items if needed"** is checked and the **target** box is
    ticked so they're compiled.

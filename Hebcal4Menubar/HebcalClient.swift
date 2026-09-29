@@ -45,6 +45,13 @@ enum HebcalError: Error, LocalizedError {
 struct HebcalClient {
     static let userAgent = "HebrewDateMenubar/1.0 (+https://www.hebcal.com)"
 
+    // Thin internal wrappers for other files (Zmanim.swift).
+    static func getJSON<T: Decodable>(_ url: URL, as type: T.Type) async throws -> T {
+        try await get(url, as: type)
+    }
+    static func isoDayString(_ date: Date) -> String { isoDay.string(from: date) }
+    static func isoInstant(_ s: String) -> Date? { isoOffset.date(from: s) }
+
     private static func get<T: Decodable>(_ url: URL, as type: T.Type) async throws -> T {
         var req = URLRequest(url: url)
         req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
@@ -79,23 +86,6 @@ struct HebcalClient {
         comps.queryItems = items
         guard let url = comps.url else { throw HebcalError.badURL }
         return try await get(url, as: HebrewDate.self)
-    }
-
-    /// Fetch today's sunset for a location. Returns nil if unavailable.
-    static func sunset(for date: Date, location: Location) async throws -> Date? {
-        var comps = URLComponents(string: "https://www.hebcal.com/zmanim")!
-        var items = [
-            URLQueryItem(name: "cfg", value: "json"),
-            URLQueryItem(name: "date", value: isoDay.string(from: date)),
-        ]
-        items.append(contentsOf: location.queryItems)
-        comps.queryItems = items
-        guard let url = comps.url else { throw HebcalError.badURL }
-
-        let resp = try await get(url, as: ZmanimResponse.self)
-        guard let iso = resp.times.sunset else { return nil }
-        // ISO-8601 with timezone offset, e.g. 2021-03-23T18:14:00-03:00
-        return isoOffset.date(from: iso)
     }
 
     /// Daily learning schedules for one civil date.
@@ -150,12 +140,6 @@ struct HebcalClient {
         f.formatOptions = [.withInternetDateTime]
         return f
     }()
-}
-
-/// Minimal decode of the Zmanim response — we only need `sunset`.
-private struct ZmanimResponse: Decodable {
-    struct Times: Decodable { let sunset: String? }
-    let times: Times
 }
 
 // MARK: - Learning and leyning
