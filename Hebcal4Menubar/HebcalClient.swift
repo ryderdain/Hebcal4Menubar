@@ -168,6 +168,18 @@ struct LearningItem {
 struct Leyning {
     let name: String
     let summary: String
+
+    /// Sefaria link for the first reading of `summary`, for example
+    /// "Deuteronomy 14:22-16:17; Numbers 29:35-30:1" → Deuteronomy.14.22-16.17,
+    /// "Numbers 29:20-28, 29:20-25" → Numbers.29.20-28.
+    var link: URL? {
+        let first = summary.split(whereSeparator: { $0 == ";" || $0 == "," }).first.map(String.init)?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        guard let space = first.lastIndex(of: " ") else { return nil }
+        let book = first[..<space].replacingOccurrences(of: " ", with: "_")
+        let range = first[first.index(after: space)...].replacingOccurrences(of: ":", with: ".")
+        return URL(string: "https://www.sefaria.org/\(book).\(range)")
+    }
 }
 
 private struct LearningResponse: Decodable {

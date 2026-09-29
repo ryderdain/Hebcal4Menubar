@@ -39,7 +39,7 @@ A menubar app has no window, so delete the GUI scaffolding Xcode made:
 ### 3. Add the source files
 
 1. Delete Xcode's generated `AppDelegate.swift` (we have our own).
-2. **File → Add Files to "Hebcal4Menubar"…**, then add all eight:
+2. **File → Add Files to "Hebcal4Menubar"…**, then add all ten:
    - `main.swift`
    - `AppDelegate.swift`
    - `HebcalClient.swift`
@@ -48,6 +48,8 @@ A menubar app has no window, so delete the GUI scaffolding Xcode made:
    - `DaveningRules.swift`
    - `LocationProvider.swift`
    - `Zmanim.swift`
+   - `MenuRows.swift`
+   - `KvetchArchive.swift`
    - (you do not need to add `Info.plist` as a source file — see step 4)
 3. Make sure **"Copy items if needed"** is checked and the **target** box is
    ticked so they're compiled.
@@ -176,3 +178,24 @@ If you use the App Sandbox in Option A, also select **Location** in the **App Da
 The Zmanim API also accepts a GeoNames ID or US ZIP; you'd extend `Location`
 and its `queryItems` to emit `geonameid=` or `zip=` instead of lat/long. See
 the location notes at <https://www.hebcal.com/home/4912>.
+
+## Make images of the menu
+
+You can make PNG images of the menu without the screen, for example when the screen is locked. Use this procedure to examine the layout after a change to the menu.
+
+1. Compile and assemble the app:
+
+    ```bash
+    bash install.sh build_app | bash
+    ```
+
+2. Start the built app with the `HEBCAL4MENUBAR_SNAPSHOT` environment variable. Set the environment variable to the folder for the images:
+
+    ```bash
+    mkdir -p build/snap
+    HEBCAL4MENUBAR_SNAPSHOT="$PWD/build/snap" build/Hebcal4Menubar.app/Contents/MacOS/Hebcal4Menubar
+    ```
+
+The app opens the menu, the **Zmanim** submenu and the **Davening** submenu, writes one image for each, and then stops. This procedure is complete after approximately 10 seconds. The images have the names `menu-N.png`, `zmanim-N.png` and `davening-N.png`.
+
+The informational lines of the menu are not standard menu items. macOS shows a menu item that you cannot click in a light color, and ignores a text color for such an item. Thus, `MenuRows.swift` shows these lines in a custom view. The view aligns its text with the text of the standard menu items: 14 pt from the left edge, or 27 pt when the menu has a column for check marks. These values are for macOS 27. If the lines are not aligned on a different version of macOS, change `InfoRowView.inset(for:)` and examine the images again.

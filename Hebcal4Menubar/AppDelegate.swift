@@ -19,13 +19,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Menu items we update in place
     private let hebrewItem = NSMenuItem(title: "…", action: nil, keyEquivalent: "")
     private let gregorianItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let eventsItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let sunsetStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let nextZmanItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let candlesItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let havdalahItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    // Informational rows are drawn by the app (MenuRows.swift) for contrast.
+    private let eventsItem = InfoMenuItem()
+    private let sunsetStatusItem = InfoMenuItem()
+    private let nextZmanItem = InfoMenuItem()
+    private let candlesItem = InfoMenuItem()
+    private let havdalahItem = InfoMenuItem()
     private let zmanimParentItem = NSMenuItem(title: "Zmanim", action: nil, keyEquivalent: "")
     private let zmanimMenu = NSMenu()
+    private let daveningParentItem = NSMenuItem(title: "Davening", action: nil, keyEquivalent: "")
+    private let daveningMenu = NSMenu()
+
+    private static let chabadDayURL = URL(string: "https://www.chabad.org/calendar/view/day.htm")!
+    private var kvetchArticles: [KvetchArticle] = []
+    private var kvetchFetchedAt: Date?
 
     private var styleTranslit: NSMenuItem!
     private var styleHebrew: NSMenuItem!
@@ -131,6 +138,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Menu construction
 
     private func buildMenu() {
+        // The two date lines are links: the Hebrew date to the Chabad.org day
+        // view, the Gregorian date to "on this day" in the News Articles Archive.
+        hebrewItem.action = #selector(openLink(_:))
+        hebrewItem.target = self
+        hebrewItem.representedObject = Self.chabadDayURL
+        hebrewItem.toolTip = "Chabad.org: today in the Jewish calendar"
+        gregorianItem.action = #selector(openLink(_:))
+        gregorianItem.target = self
+        gregorianItem.representedObject = KvetchArchive.base
         menu.addItem(hebrewItem)
         menu.addItem(gregorianItem)
         menu.addItem(.separator())
@@ -141,6 +157,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(havdalahItem)
         zmanimParentItem.submenu = zmanimMenu
         menu.addItem(zmanimParentItem)
+        daveningParentItem.submenu = daveningMenu
+        menu.addItem(daveningParentItem)
         menu.addItem(.separator())
 
         // Menubar style submenu
@@ -445,7 +463,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // chatzot halayla, the first zman of tomorrow's list: the submenu then
         // shows tomorrow.
         zmanimMenu.removeAllItems()
-        defer { brightenInfoItems(in: menu) }
+        defer {
+            InfoMenuItem.align(in: menu)
+            InfoMenuItem.align(in: zmanimMenu)
+        }
         let nextTime = Zmanim.next(after: now, in: [zmanimToday, zmanimTomorrow])?.time
         let showTomorrow = !zmanimTomorrow.isEmpty && Zmanim.next(after: now, in: [zmanimToday]) == nil
         let day = showTomorrow ? zmanimTomorrow : zmanimToday
@@ -463,43 +484,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let h = NSMenuItem(title: header, action: nil, keyEquivalent: ""); h.isEnabled = false
             zmanimMenu.addItem(h)
         }
-        let mono = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        // Columns: marker, title, times. The next zman is bold with ▸.
+        let marker: CGFloat = 14
+        let column = marker + 16 + (Zmanim.lines.map {
+            ($0.title as NSString).size(withAttributes: [.font: InfoMenuItem.boldFont]).width
+        }.max() ?? 0).rounded(.up)
         for line in Zmanim.lines {
             let times = line.times(in: day)
             let parts = times.map { t in t.label.map { "\(fmt.string(from: t.time)) \($0)" } ?? fmt.string(from: t.time) }
             guard !parts.isEmpty else { continue }
             let isNext = times.contains { $0.time == nextTime }
-            let text = "\(isNext ? "▸" : "  ") \(line.title): \(parts.joined(separator: " · "))"
-            let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-            item.attributedTitle = NSAttributedString(string: text, attributes: [.font: mono])
+            let text = "\(isNext ? "▸" : "")\t\(line.title)\t\(parts.joined(separator: " · "))"
+            var attributes = InfoMenuItem.attributes(bold: isNext)
+            let tabs = NSMutableParagraphStyle()
+            tabs.tabStops = [NSTextTab(textAlignment: .left, location: marker),
+                             NSTextTab(textAlignment: .left, location: column)]
+            attributes[.paragraphStyle] = tabs
+            let item = InfoMenuItem()
+            item.attributedText = NSAttributedString(string: text, attributes: attributes)
             zmanimMenu.addItem(item)
         }
         zmanimMenu.addItem(.separator())
-        let note = NSMenuItem(title: "Candle lighting \(Zmanim.candleLightingMinutes) min before sunset · havdalah at 8.5°",
-                              action: nil, keyEquivalent: "")
-        zmanimMenu.addItem(note)
-    }
-
-    /// Informational items (no action, no submenu) are disabled, so AppKit
-    /// draws them in the faint disabled color. An explicit foreground color in
-    /// the attributed title replaces that color. The items stay disabled: no
-    /// highlight on hover, and a click does not close the menu. Rebuilt from
-    /// `title` each time, so call it after the titles change.
-    private func brightenInfoItems(in menu: NSMenu) {
-        for item in menu.items {
-            if let submenu = item.submenu { brightenInfoItems(in: submenu); continue }
-            guard !item.isSeparatorItem, item.action == nil, !item.title.isEmpty else { continue }
-            if #available(macOS 14.0, *), item.isSectionHeader { continue }
-            let font = item.attributedTitle?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
-                ?? NSFont.menuFont(ofSize: 0)
-            item.attributedTitle = NSAttributedString(string: item.title,
-                                                      attributes: [.font: font, .foregroundColor: NSColor.labelColor])
-        }
+        zmanimMenu.addItem(InfoMenuItem("Candle lighting \(Zmanim.candleLightingMinutes) min before sunset · havdalah at 8.5°"))
     }
 
     // NSMenuDelegate: recompute "next" and "in N min" whenever the menu opens.
     func menuWillOpen(_ menu: NSMenu) {
         if menu === self.menu { renderZmanim(now: Date()) }
+    }
+
+    // MARK: - Snapshot (developer aid)
+
+    private var snapshotStarted = false
+
+    /// HEBCAL4MENUBAR_SNAPSHOT=<folder> writes PNG images of the menu and of
+    /// the Zmanim and Davening submenus into <folder>, then quits. The images
+    /// come from the menu windows' own views, so this works on a locked screen.
+    private func snapshotIfRequested() {
+        guard !snapshotStarted, let dir = ProcessInfo.processInfo.environment["HEBCAL4MENUBAR_SNAPSHOT"] else { return }
+        snapshotStarted = true
+        let targets: [(name: String, menu: NSMenu, parent: NSMenuItem?)] = [
+            ("menu", menu, nil), ("zmanim", zmanimMenu, zmanimParentItem), ("davening", daveningMenu, daveningParentItem),
+        ]
+        func shoot(_ i: Int) {
+            guard i < targets.count else { NSApp.terminate(nil); return }
+            let target = targets[i]
+            target.parent?.submenu = nil   // a submenu cannot pop up on its own
+            if target.menu !== menu { renderZmanim(now: Date()) }
+            let timer = Timer(timeInterval: 1.5, repeats: false) { _ in
+                for (n, w) in NSApp.windows.enumerated() where w.isVisible && w.className.contains("Menu") {
+                    guard let v = w.contentView?.superview ?? w.contentView,
+                          let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { continue }
+                    v.cacheDisplay(in: v.bounds, to: rep)
+                    let url = URL(fileURLWithPath: dir).appendingPathComponent("\(target.name)-\(n).png")
+                    try? rep.representation(using: .png, properties: [:])?.write(to: url)
+                }
+                target.menu.cancelTracking()
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            target.menu.popUp(positioning: nil, at: NSPoint(x: 200, y: 1000), in: nil)
+            target.parent?.submenu = target.menu
+            DispatchQueue.main.async { shoot(i + 1) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { shoot(0) }
     }
 
     // MARK: - Refresh
@@ -520,6 +567,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             lastDate = data
             await refreshLearning()
             render(data)
+            Task { await refreshKvetch() }
+            snapshotIfRequested()
         } catch {
             renderError(error.localizedDescription)
         }
@@ -543,6 +592,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Download the News Articles Archive once a day (once an hour after a
+    /// failure) and point the Gregorian date line at today's article.
+    @MainActor
+    private func refreshKvetch() async {
+        let maxAge: TimeInterval = kvetchArticles.isEmpty ? 3_600 : 86_400
+        if let t = kvetchFetchedAt, Date().timeIntervalSince(t) < maxAge { return }
+        kvetchFetchedAt = Date()
+        if let articles = try? await KvetchArchive.fetch(), !articles.isEmpty {
+            kvetchArticles = articles
+        }
+        updateGregorianLink()
+    }
+
+    private func updateGregorianLink() {
+        let picks = KvetchArchive.nearest(to: Date(), in: kvetchArticles)
+        if let a = picks.first {
+            gregorianItem.representedObject = KvetchArchive.link(to: a)
+            gregorianItem.toolTip = "On this day: \(a.date) · \(a.title)"
+                + (picks.count > 1 ? " (and \(picks.count - 1) more)" : "")
+        } else {
+            gregorianItem.representedObject = KvetchArchive.base
+            gregorianItem.toolTip = "News Articles Archive"
+        }
+    }
+
     private func currentHebrewDay() -> HDay {
         HDay.current(at: Date(), afterSunset: effectiveAfterSunset)
     }
@@ -560,6 +634,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lockOverlay.setText(title(for: d))
         hebrewItem.title = d.hebrew
         gregorianItem.title = Self.gregorianFormatter.string(from: Date())
+        updateGregorianLink()
 
         if let events = d.events, !events.isEmpty {
             eventsItem.title = events.joined(separator: "  •  ")
@@ -597,7 +672,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             gregorianItem.title = msg
             eventsItem.title = "Will retry automatically"
         }
-        brightenInfoItems(in: menu)
     }
 
     // MARK: - Location
@@ -617,7 +691,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let fb = locationProvider.fallback
         fallbackInfoItem.title = "Fallback: \(fb.name) (\(fb.tzid)\(fb.elevationText.map { ", " + $0 } ?? ""))"
         openLocationSettingsItem.isHidden = !locationProvider.needsSystemSettings
-        brightenInfoItems(in: menu)
     }
 
     /// Ask for a fallback place. Accepts a city, "lat, lon" or "lat, lon, Area/City".
@@ -669,9 +742,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.isEnabled = false
             return item
         }
-        func info(_ title: String) -> NSMenuItem {
-            NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        }
 
         // Learning
         let shown = learning.filter { isLearningShown($0.kind) }
@@ -687,18 +757,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 item.representedObject = l.link
                 items.append(item)
             }
-            if let r = leyning { items.append(info("Torah reading: \(r.name) — \(r.summary)")) }
+            if let r = leyning {
+                let item = NSMenuItem(title: "Torah reading: \(r.name) — \(r.summary)",
+                                      action: r.link == nil ? nil : #selector(openLink(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = r.link
+                items.append(item)
+            }
         }
 
         // Davening
         let h = currentHebrewDay()
         let notes = DaveningRules.notes(for: h, nusach: nusach, israel: israel,
                                         eveningStarted: effectiveAfterSunset)
-        items.append(.separator())
-        items.append(header("Davening · \(nusach.title) · \(israel ? "Israel" : "Diaspora")"))
-        notes.forEach { items.append(info($0)) }
+        daveningMenu.removeAllItems()
+        daveningMenu.addItem(header("\(nusach.title) · \(israel ? "Israel" : "Diaspora")"))
+        notes.forEach { daveningMenu.addItem(InfoMenuItem($0)) }
+        daveningParentItem.isHidden = notes.isEmpty
+        InfoMenuItem.align(in: daveningMenu)
 
-        guard var index = menu.items.firstIndex(of: zmanimParentItem) else { return }
+        guard var index = menu.items.firstIndex(of: daveningParentItem) else { return }
         for item in items {
             index += 1
             menu.insertItem(item, at: index)
