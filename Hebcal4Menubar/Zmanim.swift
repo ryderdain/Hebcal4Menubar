@@ -17,21 +17,19 @@ import Foundation
 struct ZmanLine {
     let title: String
     let fields: [(key: String, label: String?)]
-    /// Take the value from the next civil date's response. Hebcal's
-    /// `chatzotNight` for a date is the midnight at the START of that date
-    /// (2026-09-29 → 2026-09-29T01:05), so tonight's comes from tomorrow.
-    var fromNextDay = false
 
-    /// This line's times for "today", given today's and tomorrow's responses.
-    func times(today: [String: Date], tomorrow: [String: Date]) -> [(time: Date, label: String?)] {
-        let source = fromNextDay ? tomorrow : today
-        return fields.compactMap { f in source[f.key].map { ($0, f.label) } }
+    /// This line's times in one day's response.
+    func times(in day: [String: Date]) -> [(time: Date, label: String?)] {
+        fields.compactMap { f in day[f.key].map { ($0, f.label) } }
     }
 }
 
 enum Zmanim {
     /// Submenu order. Keys are fields of the Hebcal Zmanim API `times` object.
+    /// Hebcal's `chatzotNight` for a date is the midnight at the START of
+    /// that date (2026-09-29 → 2026-09-29T01:05), the first zman of the day.
     static let lines: [ZmanLine] = [
+        ZmanLine(title: "Chatzot halayla", fields: [("chatzotNight", nil)]),
         ZmanLine(title: "Alot hashachar (16.1°)", fields: [("alotHaShachar", nil)]),
         ZmanLine(title: "Misheyakir", fields: [("misheyakir", "11.5°"), ("misheyakirMachmir", "10.2°")]),
         ZmanLine(title: "Sunrise", fields: [("sunrise", nil)]),
@@ -43,7 +41,6 @@ enum Zmanim {
         ZmanLine(title: "Plag hamincha", fields: [("plagHaMincha", nil)]),
         ZmanLine(title: "Sunset", fields: [("sunset", nil)]),
         ZmanLine(title: "Tzeit hakochavim (8.5°)", fields: [("tzeit85deg", nil)]),
-        ZmanLine(title: "Chatzot halayla", fields: [("chatzotNight", nil)], fromNextDay: true),
     ]
 
     /// Minutes before sunset for Shabbat and Yom Tov candle lighting.
