@@ -25,11 +25,14 @@ zmanim API for sunset.
 - Refreshes every ~2 min so midnight and sunset rollovers happen on their own.
 - **Lock screen date** (Swift version only): the Hebrew date shows above the
   macOS date on the lock screen. See [Lock screen date](#lock-screen-date).
+- **Date links** (Swift version only): the Hebrew date opens the day on
+  Chabad.org, and the Gregorian date opens an article from the same day of the
+  year in the News Articles Archive. See [Date links](#date-links).
 - **Zmanim** (Swift version only): the next zman, candle lighting and havdalah in
   the menu, and all the day's zmanim in a submenu. See [Zmanim](#zmanim).
 - **Learning and davening** (Swift version only): Daf Yomi, Mishnah Yomi,
   Yerushalmi Yomi, Nach Yomi and the Torah reading, and the day's changes to
-  the davening for your nusach. See [Learning and davening](#learning-and-davening).
+  the davening for your nusach in a submenu. See [Learning and davening](#learning-and-davening).
 - Degrades gracefully offline: keeps the last good value with a ⚠, and if
   sunset can't be fetched, Auto mode safely falls back to the civil day.
 
@@ -107,6 +110,15 @@ Hebcal does not use an elevation of 0 m or less. Thus, for a location below sea 
 
 The Python version uses the coordinates in its code (Munich) and does not use Location Services.
 
+## Date links
+
+In the Swift version, the two date lines at the top of the menu are links:
+
+- Click the Hebrew date to open the day view of the Chabad.org calendar.
+- Click the Gregorian date to open the News Articles Archive (kvetch-of-the-day.github.io) at an article from the same day of the year. The year of the article is not important. If no article has today's day and month, the link uses the article with the nearest day. Put the pointer on the line to see the date and the title of the article.
+
+You cannot put a date in the address of the archive page. Thus, the app downloads the archive page one time each day and finds the article. The link uses a text fragment (`#:~:text=`) to go to the date of the article on the page. When more than one article has the same day, the link goes to the first of these articles on the page. If the app cannot download the archive page, the link opens the top of the page.
+
 ## Zmanim
 
 The Swift version shows the zmanim for the location of the sunset line (refer to [Location](#location)). The times are in the time zone of that location. If this time zone is different from the time zone of your Mac, the menu shows the time zone after the time.
@@ -117,7 +129,7 @@ The main menu shows these lines below the sunset line:
 - **Candle lighting**: the next candle lighting times for Shabbat and Yom Tov. When Yom Tov is before or after Shabbat, the line shows each candle lighting time.
 - **Havdalah**: the time of the next havdalah.
 
-The **Zmanim** submenu shows all the zmanim of the day. The symbol ▸ shows the next zman. The first zman of the day is chatzot halayla, the midnight at the start of the day. After tzeit hakochavim, the next zman is the chatzot halayla of the night. Thus, the submenu then shows the zmanim of the next day.
+The **Zmanim** submenu shows all the zmanim of the day. The symbol ▸ and bold text show the next zman. The first zman of the day is chatzot halayla, the midnight at the start of the day. After tzeit hakochavim, the next zman is the chatzot halayla of the night. Thus, the submenu then shows the zmanim of the next day.
 
 | Zman | Opinion |
 | --- | --- |
@@ -137,20 +149,20 @@ The app gets the zmanim from the Hebcal Zmanim API one time for each day and loc
 
 ## Learning and davening
 
-The Swift version shows two more sections in the menu, below the sunset line. The Python version does not have these sections.
+The Swift version shows the **Davening** submenu below the **Zmanim** submenu, and the **Learning** section below the **Davening** submenu. The Python version does not have these items.
 
 ### Learning
 
 The **Learning** section shows the daily learning schedules and the Torah reading for the Hebrew day on the menu:
 
 - Daf Yomi, Mishnah Yomi, Yerushalmi Yomi and Nach Yomi. Click a line to open the text on Sefaria.
-- The Torah reading, when there is one: Monday and Thursday, Rosh Chodesh, fasts, festivals and Shabbat.
+- The Torah reading, when there is one: Monday and Thursday, Rosh Chodesh, fasts, festivals and Shabbat. Click the line to open the first reading on Sefaria.
 
 The app gets these data from the Hebcal API one time for each Hebrew day. When the Mac is offline, the menu keeps the last data. To show or hide a schedule, use the **Learning schedules** submenu. The **Menubar style** submenu also sets the language of the learning lines.
 
 ### Davening
 
-The **Davening** section shows the changes to the prayers for the Hebrew day on the menu. Examples are Ya'aleh v'yavo, Hallel, Tachanun, Sefirat haOmer and Kiddush Levanah. The app calculates these changes on your Mac. Thus, this section operates without a network connection.
+The **Davening** submenu shows the changes to the prayers for the Hebrew day on the menu. Examples are Ya'aleh v'yavo, Hallel, Tachanun, Sefirat haOmer and Kiddush Levanah. The app calculates these changes on your Mac. Thus, this submenu operates without a network connection.
 
 Use the **Nusach** submenu to select Ashkenaz, Sefard (chassidic), Chabad or Edot HaMizrach. In the same submenu, select **Eretz Yisrael (Israel customs)** for the customs of Israel. The default is Ashkenaz in the diaspora.
 
