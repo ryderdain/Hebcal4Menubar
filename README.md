@@ -59,8 +59,51 @@ The Hebcal converter's `gs=on` flag only means "treat as after sunset"; it
 doesn't know *when* sunset is. So in Auto mode the app first calls the **Zmanim
 API** for today's `sunset` (an ISO-8601 time with timezone offset for your
 location), compares it to the current time, and only then asks the converter
-for the advanced date if sunset has passed. Location defaults to Munich and is
-a one-line change in both versions.
+for the advanced date if sunset has passed. The Swift version uses the Mac's
+current location (see [Location](#location)); the Python version uses Munich.
+
+## Location
+
+The Swift version calculates the sunset for the current location of the Mac. It uses Location Services with a precision of approximately 1 km. It gets the time zone and the name of the location from the Apple geocoding service.
+
+When the current location is not available, the app uses a fallback location. The default fallback location is Munich. The app uses the fallback location in these conditions:
+
+- You did not give permission for Location Services, or you set **Use current location** to off.
+- The Mac cannot find its location, and the app has no location from before.
+
+The sunset line in the menu shows the location, for example "Sunset 18:59 in Munich (before sunset)". The **Location** submenu shows the location that the app uses, and the cause.
+
+To set a different fallback location:
+
+1. In the menu, select **Location** > **Set fallback location…**.
+2. Type a city, for example `Jerusalem`. You can also type coordinates as `lat, lon`, as `lat, lon, Area/City` with a time zone, or as `lat, lon, Area/City, metres` with a time zone and an elevation.
+3. Click **Set**.
+
+To use Munich again, select **Location** > **Reset fallback to Munich**.
+
+When the app starts for the first time, macOS shows a permission dialog for your location. If you do not give permission, open **System Settings** > **Privacy & Security** > **Location Services** and set **Hebcal4Menubar** to on. The **Location** submenu then shows a menu item that opens these settings.
+
+macOS keeps the permission for one signature of the app. `install.sh` gives the app an ad-hoc signature, which changes with each build. Thus, macOS can show the permission dialog again after each installation. To keep the permission, sign the app with a certificate:
+
+```bash
+CODESIGN_IDENTITY='Apple Development: …' bash install.sh | bash
+```
+
+### Elevation
+
+Hebcal can calculate the sunset for the elevation of a location. At a high elevation, the sunset occurs after the sunset at sea level. For example, in Munich (524 m) the difference is 5 minutes. This is the same as the **Use elevation** check box in the calendar of hebcal.com.
+
+To use the elevation, select **Location** > **Use elevation for sunset**. The default is off, the same as on hebcal.com.
+
+The app gets the elevation from these sources, in this sequence:
+
+1. Location Services, when the Mac gives a correct altitude. Most Macs do not have GPS. Thus, this source is not frequent.
+2. The Open-Meteo elevation service. The app sends the coordinates to Open-Meteo only when **Use elevation for sunset** is on.
+3. Your entry in **Set fallback location…**, as `lat, lon, Area/City, metres`. For example: `48.14, 11.58, Europe/Berlin, 524`.
+
+Hebcal does not use an elevation of 0 m or less. Thus, for a location below sea level, the app calculates the sunset at sea level.
+
+The Python version uses the coordinates in its code (Munich) and does not use Location Services.
 
 ## Learning and davening
 

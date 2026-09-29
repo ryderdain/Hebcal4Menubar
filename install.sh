@@ -10,6 +10,12 @@
 #   bash install.sh build_app        # preview the build only
 #   bash install.sh install_app      # preview the install only (needs a build)
 #   INSTALL_DIR=~/Applications bash install.sh | bash
+#   CODESIGN_IDENTITY='Apple Development: …' bash install.sh | bash
+#
+# CODESIGN_IDENTITY (default: ad-hoc, "-") signs with a real certificate.
+# macOS ties the Location Services permission to the signature; an ad-hoc
+# signature changes with every build, so macOS may ask again after each
+# install. A stable identity keeps the permission.
 #
 # The generator needs bash >= 4.2 (macOS /bin/bash is 3.2: `brew install bash`).
 # The emitted commands are plain POSIX sh, so any shell can run them.
@@ -52,6 +58,7 @@ src_dir="$repo_root/Hebcal4Menubar"
 build_dir="$repo_root/build"
 info_plist="$src_dir/Info.plist"
 install_dir="${INSTALL_DIR:-/Applications}"
+sign_identity="${CODESIGN_IDENTITY:--}"
 
 # The emitted stream starts with `cd "$repo_root"`, so build commands can use
 # these short, readable repo-relative paths.
@@ -159,6 +166,14 @@ preflight_check() {
         return
     fi
 
+    if [[ "$sign_identity" != '-' ]]; then
+        require_tools security || return
+        if ! security find-identity -v -p codesigning | grep -qF -- "$sign_identity"; then
+            end_function 1 "signing identity not found in the keychain: $sign_identity (list: security find-identity -v -p codesigning)"
+            return
+        fi
+    fi
+
     if [[ ! -d "$install_dir" || ! -w "$install_dir" ]]; then
         end_function 1 "install directory missing or not writable: $install_dir"
         return
@@ -188,8 +203,12 @@ queue_build() {
     fi
     # The menubar PNGs are full-color, not template images (ICON_NOTES.md),
     # so they are deliberately not copied.
-    step_raw "echo '==> Signing (ad-hoc)'"
-    step codesign --sign - --force "$app"
+    if [[ "$sign_identity" == '-' ]]; then
+        step_raw "echo '==> Signing (ad-hoc; macOS may ask for Location Services again)'"
+    else
+        step_raw "echo '==> Signing with the given identity'"
+    fi
+    step codesign --sign "$sign_identity" --force "$app"
     step codesign --verify "$app"
     build_queued='true'
     end_function 0 "queued build of $repo_root/$app"

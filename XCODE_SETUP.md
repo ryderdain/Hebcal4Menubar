@@ -1,6 +1,6 @@
 # Building the Swift Version in Xcode
 
-This walks you through creating a native macOS menubar app from the six Swift
+This walks you through creating a native macOS menubar app from the seven Swift
 source files in `Hebcal4Menubar/`. No prior Xcode experience assumed.
 
 The app has no window and no Dock icon — it lives entirely in the menubar. That
@@ -39,13 +39,14 @@ A menubar app has no window, so delete the GUI scaffolding Xcode made:
 ### 3. Add the source files
 
 1. Delete Xcode's generated `AppDelegate.swift` (we have our own).
-2. **File → Add Files to "Hebcal4Menubar"…**, then add all six:
+2. **File → Add Files to "Hebcal4Menubar"…**, then add all seven:
    - `main.swift`
    - `AppDelegate.swift`
    - `HebcalClient.swift`
    - `LockScreenOverlay.swift`
    - `HebrewDay.swift`
    - `DaveningRules.swift`
+   - `LocationProvider.swift`
    - (you do not need to add `Info.plist` as a source file — see step 4)
 3. Make sure **"Copy items if needed"** is checked and the **target** box is
    ticked so they're compiled.
@@ -127,6 +128,7 @@ Other commands:
 | `bash install.sh build_app \| bash` | Builds the app in `build/`. The script does not install the app. |
 | `bash install.sh install_app \| bash` | Installs the last build. The script does not compile. |
 | `INSTALL_DIR=~/Applications bash install.sh \| bash` | Installs the app in a different folder. |
+| `CODESIGN_IDENTITY='Apple Development: …' bash install.sh \| bash` | Signs the app with a certificate. Then macOS keeps the Location Services permission after an update. |
 
 If a step has an error, the steps after it do not start. The last line that starts with `==>` shows the step with the error. Correct the cause, then use the same command again.
 
@@ -158,12 +160,17 @@ Either build path produces a normal `.app`. To start it automatically:
 
 ## Changing your location
 
-Sunset is computed for a location (default: Munich). Edit `Location.munich` in
-`HebcalClient.swift`:
+The app uses the current location of the Mac. To change the fallback location, select **Location** > **Set fallback location…** in the menu (refer to "Location" in `README.md`). You do not have to change the code.
+
+To change the default fallback location in the code, edit `Place.munich` in `LocationProvider.swift`:
 
 ```swift
-static let munich = Location(latitude: 40.7128, longitude: -74.0060) // NYC
+static let munich = Place(name: "New York", latitude: 40.7128, longitude: -74.0060, tzid: "America/New_York", elevation: 10)
 ```
+
+Set `tzid` to the time zone of the location, not to the time zone of your Mac. If there is no `tzid`, the Zmanim API does not give the sunset time (HTTP 400). The menu then shows "Sunset time unavailable".
+
+If you use the App Sandbox in Option A, also select **Location** in the **App Data** section of **Signing & Capabilities**. Without this selection, the sandbox prevents access to Location Services, and the app always uses the fallback location.
 
 The Zmanim API also accepts a GeoNames ID or US ZIP; you'd extend `Location`
 and its `queryItems` to emit `geonameid=` or `zip=` instead of lat/long. See

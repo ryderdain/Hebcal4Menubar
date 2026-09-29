@@ -59,10 +59,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // State
     private var style: MenubarStyle = .translit
     private var sunsetMode: SunsetMode = .auto
-    private let location = Location.munich
+    private let locationProvider = LocationProvider()
     private var lastDate: HebrewDate?
     private var cachedSunset: Date?
     private var sunsetValidFor: Date?       // start-of-day this sunset belongs to
+    private var sunsetError: String?        // why the last sunset lookup failed
+    private var sunsetPlaceKey: String?     // Place.cacheKey the cached sunset belongs to
+    private var sunsetPlaceName = ""
+
+    // Location submenu items we update in place
+    private let locationStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let fallbackInfoItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private var useCurrentItem: NSMenuItem!
+    private var useElevationItem: NSMenuItem!
+    private var openLocationSettingsItem: NSMenuItem!
     private var effectiveAfterSunset = false
     private var timer: Timer?
 
@@ -87,6 +97,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         lockOverlay = LockScreenOverlay()
+
+        locationProvider.onChange = { [weak self] in self?.locationChanged() }
+        locationProvider.start()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.locationProvider.refreshIfStale(maxAge: 0)
+        }
 
         buildMenu()
         statusItem.menu = menu
@@ -182,6 +199,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         daveningParent.submenu = daveningMenu
         menu.addItem(daveningParent)
 
+        // Location for sunset: current location, with a fallback place
+        let locationMenu = NSMenu()
+        locationMenu.addItem(locationStatusItem)
+        locationMenu.addItem(.separator())
+        useCurrentItem = NSMenuItem(title: "Use current location",
+                                    action: #selector(toggleUseCurrent), keyEquivalent: "")
+        useCurrentItem.target = self
+        locationMenu.addItem(useCurrentItem)
+        useElevationItem = NSMenuItem(title: "Use elevation for sunset",
+                                      action: #selector(toggleUseElevation), keyEquivalent: "")
+        useElevationItem.target = self
+        locationMenu.addItem(useElevationItem)
+        locationMenu.addItem(.separator())
+        locationMenu.addItem(fallbackInfoItem)
+        let setFallback = NSMenuItem(title: "Set fallback location…",
+                                     action: #selector(promptForFallback), keyEquivalent: "")
+        setFallback.target = self
+        locationMenu.addItem(setFallback)
+        let resetFallback = NSMenuItem(title: "Reset fallback to Munich",
+                                       action: #selector(resetFallback), keyEquivalent: "")
+        resetFallback.target = self
+        locationMenu.addItem(resetFallback)
+        locationMenu.addItem(.separator())
+        openLocationSettingsItem = NSMenuItem(title: "Open Location Services settings…",
+                                              action: #selector(openLocationSettings), keyEquivalent: "")
+        openLocationSettingsItem.target = self
+        locationMenu.addItem(openLocationSettingsItem)
+        let locationParent = NSMenuItem(title: "Location", action: nil, keyEquivalent: "")
+        locationParent.submenu = locationMenu
+        menu.addItem(locationParent)
+        updateLocationItems()
+
         // Learning schedules shown
         let learningMenu = NSMenu()
         for k in LearningKind.allCases {
@@ -264,7 +313,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openLink(_ sender: NSMenuItem) {
         if let url = sender.representedObject as? URL { NSWorkspace.shared.open(url) }
     }
-    @objc private func manualRefresh() { refresh() }
+    @objc private func toggleUseCurrent() { locationProvider.useCurrent.toggle() }
+    @objc private func toggleUseElevation() { locationProvider.useElevation.toggle() }
+    @objc private func resetFallback() { locationProvider.fallback = .munich }
+    @objc private func openLocationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    @objc private func promptForFallback() { askForFallback(prefill: "") }
+    @objc private func manualRefresh() { locationProvider.refreshIfStale(maxAge: 0); refresh() }
     @objc private func openHebcal() {
         if let url = URL(string: "https://www.hebcal.com/converter") {
             NSWorkspace.shared.open(url)
@@ -285,8 +343,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .off: return false
         case .auto:
             let startOfDay = Calendar.current.startOfDay(for: today)
-            if sunsetValidFor != startOfDay || cachedSunset == nil {
-                cachedSunset = try? await HebcalClient.sunset(for: today, location: location)
+            let place = locationProvider.effective.place
+            let useElevation = locationProvider.useElevation
+            let key = place.cacheKey + (useElevation ? "|elev" : "")
+            if sunsetValidFor != startOfDay || cachedSunset == nil || sunsetPlaceKey != key {
+                sunsetPlaceKey = key
+                sunsetPlaceName = place.name
+                if useElevation, let e = place.elevation, e > 0 { sunsetPlaceName += ", \(Int(e.rounded())) m" }
+                do {
+                    cachedSunset = try await HebcalClient.sunset(
+                        for: today, location: place.location(useElevation: useElevation))
+                    sunsetError = cachedSunset == nil ? "no sunset in the response" : nil
+                } catch {
+                    cachedSunset = nil
+                    sunsetError = error.localizedDescription
+                }
                 sunsetValidFor = startOfDay
             }
             guard let sunset = cachedSunset else { return false } // fail safe
@@ -303,6 +374,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     private func refreshAsync() async {
         let today = Date()
+        locationProvider.refreshIfStale()
         let afterSunset = await resolveAfterSunset(today: today)
         effectiveAfterSunset = afterSunset
         do {
@@ -364,9 +436,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let s = cachedSunset {
                 let hhmm = Self.timeFormatter.string(from: s)
                 let state = effectiveAfterSunset ? "after sunset → next day" : "before sunset"
-                sunsetStatusItem.title = "Sunset \(hhmm) (\(state))"
+                sunsetStatusItem.title = "Sunset \(hhmm) in \(sunsetPlaceName) (\(state))"
             } else {
-                sunsetStatusItem.title = "Sunset time unavailable (using civil day)"
+                let reason = sunsetError.map { ": \($0)" } ?? ""
+                sunsetStatusItem.title = "Sunset time unavailable\(reason) (using civil day)"
             }
         case .on:  sunsetStatusItem.title = "Mode: always after sunset"
         case .off: sunsetStatusItem.title = "Mode: civil day"
@@ -382,6 +455,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hebrewItem.title = "Couldn't reach Hebcal"
             gregorianItem.title = msg
             eventsItem.title = "Will retry automatically"
+        }
+    }
+
+    // MARK: - Location
+
+    /// The effective place or the permission changed: update the submenu and,
+    /// if the place is different, fetch the sunset for the new place.
+    private func locationChanged() {
+        updateLocationItems()
+        let key = locationProvider.effective.place.cacheKey + (locationProvider.useElevation ? "|elev" : "")
+        if key != sunsetPlaceKey { refresh() }
+    }
+
+    private func updateLocationItems() {
+        guard useCurrentItem != nil else { return }
+        locationStatusItem.title = locationProvider.statusLine
+        useCurrentItem.state = locationProvider.useCurrent ? .on : .off
+        useElevationItem.state = locationProvider.useElevation ? .on : .off
+        let fb = locationProvider.fallback
+        fallbackInfoItem.title = "Fallback: \(fb.name) (\(fb.tzid)\(fb.elevationText.map { ", " + $0 } ?? ""))"
+        openLocationSettingsItem.isHidden = !locationProvider.needsSystemSettings
+    }
+
+    /// Ask for a fallback place. Accepts a city, "lat, lon" or "lat, lon, Area/City".
+    private func askForFallback(prefill: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Set fallback location"
+        alert.informativeText = "Used for sunset when the current location is not available.\n"
+            + "Enter a city (for example Jerusalem), or coordinates as “lat, lon”, "
+            + "optionally with a time zone and an elevation in metres: "
+            + "“48.14, 11.58, Europe/Berlin, 524”."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.placeholderString = "City, or lat, lon[, Area/City[, metres]]"
+        field.stringValue = prefill
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Set")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let input = field.stringValue
+        LocationProvider.resolve(input) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let place):
+                    self?.locationProvider.fallback = place
+                case .failure(let error):
+                    let fail = NSAlert()
+                    fail.messageText = "Could not set the fallback location"
+                    fail.informativeText = error.localizedDescription
+                    fail.addButton(withTitle: "Try Again")
+                    fail.addButton(withTitle: "Cancel")
+                    if fail.runModal() == .alertFirstButtonReturn { self?.askForFallback(prefill: input) }
+                }
+            }
         }
     }
 
