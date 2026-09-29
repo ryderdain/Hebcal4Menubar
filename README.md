@@ -117,10 +117,11 @@ The main menu shows these lines below the sunset line:
 - **Candle lighting**: the next candle lighting times for Shabbat and Yom Tov. When Yom Tov is before or after Shabbat, the line shows each candle lighting time.
 - **Havdalah**: the time of the next havdalah.
 
-The **Zmanim** submenu shows all the zmanim of the day. The symbol ▸ shows the next zman.
+The **Zmanim** submenu shows all the zmanim of the day. The symbol ▸ shows the next zman. The first zman of the day is chatzot halayla, the midnight at the start of the day. After tzeit hakochavim, the next zman is the chatzot halayla of the night. Thus, the submenu then shows the zmanim of the next day.
 
 | Zman | Opinion |
 | --- | --- |
+| Chatzot halayla | The midnight at the start of the day |
 | Alot hashachar | 16.1° |
 | Misheyakir | 11.5° and 10.2° |
 | Sunrise | — |
@@ -129,7 +130,6 @@ The **Zmanim** submenu shows all the zmanim of the day. The symbol ▸ shows the
 | Mincha gedola, mincha ketana, plag hamincha | GRA |
 | Sunset | — |
 | Tzeit hakochavim | 8.5° |
-| Chatzot halayla | The night after the day on the menu |
 
 Candle lighting is 18 minutes before sunset. Havdalah is at tzeit hakochavim (8.5°). When **Use elevation for sunset** is on, the sunrise, the sunset and the candle lighting include the elevation.
 

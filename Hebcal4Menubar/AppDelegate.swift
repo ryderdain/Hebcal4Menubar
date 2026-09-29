@@ -440,15 +440,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         havdalahItem.title = "Havdalah: " + (havdalah.map { stamp($0.time) } ?? "") + zoneNote
         havdalahItem.isHidden = havdalah == nil
 
-        // Zmanim submenu: today's list, with the next one marked.
+        // Zmanim submenu: the list of the day that holds the next zman, with
+        // that zman marked. After tzeit hakochavim the next zman is tonight's
+        // chatzot halayla, the first zman of tomorrow's list: the submenu then
+        // shows tomorrow.
         zmanimMenu.removeAllItems()
-        guard !zmanimToday.isEmpty else {
+        defer { brightenInfoItems(in: menu) }
+        let nextTime = Zmanim.next(after: now, in: [zmanimToday, zmanimTomorrow])?.time
+        let showTomorrow = !zmanimTomorrow.isEmpty && Zmanim.next(after: now, in: [zmanimToday]) == nil
+        let day = showTomorrow ? zmanimTomorrow : zmanimToday
+        guard !day.isEmpty else {
             zmanimParentItem.isHidden = true
             return
         }
         zmanimParentItem.isHidden = false
-        let nextTime = Zmanim.next(after: now, in: [zmanimToday, zmanimTomorrow])?.time
-        let header = "\(sunsetPlaceName) · \(dayFmt.string(from: zmanimDay ?? now))\(zoneNote)"
+        let baseDay = zmanimDay ?? Calendar.current.startOfDay(for: now)
+        let shownDay = showTomorrow ? Calendar.current.date(byAdding: .day, value: 1, to: baseDay) ?? baseDay : baseDay
+        let header = "\(sunsetPlaceName) · \(dayFmt.string(from: shownDay))\(zoneNote)"
         if #available(macOS 14.0, *) {
             zmanimMenu.addItem(NSMenuItem.sectionHeader(title: header))
         } else {
@@ -457,7 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let mono = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         for line in Zmanim.lines {
-            let times = line.times(today: zmanimToday, tomorrow: zmanimTomorrow)
+            let times = line.times(in: day)
             let parts = times.map { t in t.label.map { "\(fmt.string(from: t.time)) \($0)" } ?? fmt.string(from: t.time) }
             guard !parts.isEmpty else { continue }
             let isNext = times.contains { $0.time == nextTime }
@@ -470,6 +478,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let note = NSMenuItem(title: "Candle lighting \(Zmanim.candleLightingMinutes) min before sunset · havdalah at 8.5°",
                               action: nil, keyEquivalent: "")
         zmanimMenu.addItem(note)
+    }
+
+    /// Informational items (no action, no submenu) are disabled, so AppKit
+    /// draws them in the faint disabled color. An explicit foreground color in
+    /// the attributed title replaces that color. The items stay disabled: no
+    /// highlight on hover, and a click does not close the menu. Rebuilt from
+    /// `title` each time, so call it after the titles change.
+    private func brightenInfoItems(in menu: NSMenu) {
+        for item in menu.items {
+            if let submenu = item.submenu { brightenInfoItems(in: submenu); continue }
+            guard !item.isSeparatorItem, item.action == nil, !item.title.isEmpty else { continue }
+            if #available(macOS 14.0, *), item.isSectionHeader { continue }
+            let font = item.attributedTitle?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+                ?? NSFont.menuFont(ofSize: 0)
+            item.attributedTitle = NSAttributedString(string: item.title,
+                                                      attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+        }
     }
 
     // NSMenuDelegate: recompute "next" and "in N min" whenever the menu opens.
@@ -572,6 +597,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             gregorianItem.title = msg
             eventsItem.title = "Will retry automatically"
         }
+        brightenInfoItems(in: menu)
     }
 
     // MARK: - Location
@@ -591,6 +617,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let fb = locationProvider.fallback
         fallbackInfoItem.title = "Fallback: \(fb.name) (\(fb.tzid)\(fb.elevationText.map { ", " + $0 } ?? ""))"
         openLocationSettingsItem.isHidden = !locationProvider.needsSystemSettings
+        brightenInfoItems(in: menu)
     }
 
     /// Ask for a fallback place. Accepts a city, "lat, lon" or "lat, lon, Area/City".
