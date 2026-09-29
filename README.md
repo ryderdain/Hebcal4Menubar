@@ -25,6 +25,8 @@ zmanim API for sunset.
 - Refreshes every ~2 min so midnight and sunset rollovers happen on their own.
 - **Lock screen date** (Swift version only): the Hebrew date shows above the
   macOS date on the lock screen. See [Lock screen date](#lock-screen-date).
+- **Zmanim** (Swift version only): the next zman, candle lighting and havdalah in
+  the menu, and all the day's zmanim in a submenu. See [Zmanim](#zmanim).
 - **Learning and davening** (Swift version only): Daf Yomi, Mishnah Yomi,
   Yerushalmi Yomi, Nach Yomi and the Torah reading, and the day's changes to
   the davening for your nusach. See [Learning and davening](#learning-and-davening).
@@ -104,6 +106,34 @@ The app gets the elevation from these sources, in this sequence:
 Hebcal does not use an elevation of 0 m or less. Thus, for a location below sea level, the app calculates the sunset at sea level.
 
 The Python version uses the coordinates in its code (Munich) and does not use Location Services.
+
+## Zmanim
+
+The Swift version shows the zmanim for the location of the sunset line (refer to [Location](#location)). The times are in the time zone of that location. If this time zone is different from the time zone of your Mac, the menu shows the time zone after the time.
+
+The main menu shows these lines below the sunset line:
+
+- **Next**: the next zman, and the time until it, for example "Next: Latest Shema (GRA) 10:07 · in 27 min".
+- **Candle lighting**: the next candle lighting times for Shabbat and Yom Tov. When Yom Tov is before or after Shabbat, the line shows each candle lighting time.
+- **Havdalah**: the time of the next havdalah.
+
+The **Zmanim** submenu shows all the zmanim of the day. The symbol ▸ shows the next zman.
+
+| Zman | Opinion |
+| --- | --- |
+| Alot hashachar | 16.1° |
+| Misheyakir | 11.5° and 10.2° |
+| Sunrise | — |
+| Latest Shema, latest Tefilla | MGA (72 minutes) and GRA |
+| Chatzot | — |
+| Mincha gedola, mincha ketana, plag hamincha | GRA |
+| Sunset | — |
+| Tzeit hakochavim | 8.5° |
+| Chatzot halayla | The night after the day on the menu |
+
+Candle lighting is 18 minutes before sunset. Havdalah is at tzeit hakochavim (8.5°). When **Use elevation for sunset** is on, the sunrise, the sunset and the candle lighting include the elevation.
+
+The app gets the zmanim from the Hebcal Zmanim API one time for each day and location. It gets the candle lighting and havdalah times from the Hebcal calendar API, with the Yom Tov days included.
 
 ## Learning and davening
 
